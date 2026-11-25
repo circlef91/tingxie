@@ -47,10 +47,31 @@
   <div id="setup">
     <div class="card">
       <div><b>① 家长输入词语</b>（每行一个，或用空格/逗号隔开）</div>
+      <div class="btns" style="justify-content:flex-start;margin:8px 0 12px">
+        <button class="blue" onclick="$('photo').click()">📷 拍照 / 选照片识别词语</button>
+        <input type="file" id="photo" accept="image/*" multiple class="hidden">
+      </div>
+      <!-- 拍照识别结果确认 -->
+      <div id="ocrBox" class="hidden" style="background:#eef6ff;border-radius:12px;padding:12px;margin-bottom:12px">
+        <div id="ocrStatus" style="font-size:17px">正在识别…</div>
+        <div class="bar" id="ocrBar"><div id="ocrBarInner"></div></div>
+        <div id="ocrResult" class="hidden">
+          <div class="hint">识别结果如下，<b>请检查并改正</b>（每行一个词，删掉不需要的行），然后加入词表：</div>
+          <textarea id="ocrText" style="height:160px"></textarea>
+          <div class="btns" style="justify-content:flex-start">
+            <button class="green" onclick="ocrApply(false)">加入词表</button>
+            <button class="blue" onclick="ocrApply(true)">替换整个词表</button>
+            <button class="gray" onclick="$('ocrBox').classList.add('hidden')">取消</button>
+          </div>
+        </div>
+      </div>
       <textarea id="words" placeholder="例如：&#10;春天&#10;温暖&#10;燕子&#10;跑|跑步的跑"></textarea>
+      <div class="hint" style="margin-bottom:6px">词表共 <b id="wordCount">0</b> 个词。</div>
       <div class="hint">
         小技巧：同音字可以加提示，用竖线隔开，例如 <code>跑|跑步的跑</code>、<code>在|在家的在</code>。<br>
-        听写时会读“跑，跑步的跑”，核对时只显示“跑”。词语会自动保存在本浏览器里。
+        听写时会读“跑，跑步的跑”，核对时只显示“跑”。词语会自动保存在本浏览器里。<br>
+        拍照时尽量拍正、拍清楚、光线充足；印刷体效果最好，手写字可能识别不准。<br>
+        iPad 另一个办法：点一下输入框 → 再点一下 → 选“<b>扫描文本</b>”，可以用相机把字直接录进来。
       </div>
     </div>
 
@@ -60,6 +81,10 @@
         <label>每个词读 <input type="number" id="repeat" min="1" max="5" value="2"> 遍</label>
         <label><input type="checkbox" id="announce" checked> 先报“第几个”</label>
         <label><input type="checkbox" id="shuffle"> 打乱顺序</label>
+      </div>
+      <div class="row">
+        <label>🎲 随机抽 <input type="number" id="pick" min="0" placeholder="全部"> 个词听写</label>
+        <span class="hint">（空着或填 0 = 全部听写；抽出的词顺序也是随机的）</span>
       </div>
       <div class="row">
         <label><input type="checkbox" id="auto" checked> 自动下一个</label>
@@ -131,8 +156,12 @@ let list = [], idx = 0, token = 0, paused = false, timer = null, voices = [];
 
 // ---------- 存储 ----------
 $('words').value = localStorage.getItem(LS.words) || '';
-$('words').addEventListener('input', () => localStorage.setItem(LS.words, $('words').value));
-const settingIds = ['repeat', 'announce', 'shuffle', 'auto', 'perChar', 'base', 'rate', 'voice'];
+function onWordsChanged() {
+  localStorage.setItem(LS.words, $('words').value);
+  $('wordCount').textContent = parseWords($('words').value).length;
+}
+$('words').addEventListener('input', onWordsChanged);
+const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'rate', 'voice'];
 function saveSettings() {
   const s = {};
   settingIds.forEach(id => { const el = $(id); s[id] = el.type === 'checkbox' ? el.checked : el.value; });
@@ -214,9 +243,12 @@ function show(id) {
   keepAwake(id === 'dictate');
 }
 
-function startWith(items) {
+function startWith(items, useAll = false) {
   if (!items.length) { alert('还没有词语哦'); return; }
-  list = $('shuffle').checked ? shuffleArr([...items]) : [...items];
+  list = [...items];
+  const n = parseInt($('pick').value) || 0;
+  if (!useAll && n > 0 && n < list.length) list = shuffleArr(list).slice(0, n);  // 随机抽 n 个
+  else if ($('shuffle').checked) shuffleArr(list);
   idx = 0; paused = false; $('btnPause').textContent = '⏸ 暂停';
   $('total').textContent = list.length;
   show('dictate');
@@ -293,9 +325,119 @@ function saveWrong() {
 function redoWrong() {
   const w = wrongItems();
   if (!w.length) { alert('没有标记错词'); return; }
-  startWith(w);
+  startWith(w, true);
 }
 function goHome() { stopAll(); show('setup'); }
+
+// ---------- 拍照识别（Tesseract.js，在浏览器本地识别，不上传照片） ----------
+const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
+const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('识别组件下载失败，请检查网络'));
+    document.head.appendChild(s);
+  });
+}
+// 缩小过大的照片，加快识别
+function prepImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 2400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res(c);
+    };
+    img.onerror = () => rej(new Error('这张图片打不开'));
+    img.src = url;
+  });
+}
+// 根据每个字的位置切分词语：同一行里字和字之间空隙大，就算新词
+function extractWords(data) {
+  const out = [];
+  const lines = [];
+  (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => lines.push(l))));
+  if (!lines.length) {
+    return (data.text || '').split(/\n|\s{2,}/).map(t => t.replace(/[^\u3400-\u9fff\uf900-\ufaff]/g, '')).filter(Boolean);
+  }
+  // 全页汉字的典型高度：明显偏小的“汉字”多半是拼音被误认，丢掉
+  const allH = [];
+  lines.forEach(l => (l.words || []).forEach(w => (w.symbols || []).forEach(s => { if (CJK.test(s.text)) allH.push(s.bbox.y1 - s.bbox.y0); })));
+  allH.sort((a, b) => a - b);
+  const typH = allH[Math.floor(allH.length / 2)] || 0;
+  const isHan = s => CJK.test(s.text) && (s.bbox.y1 - s.bbox.y0) >= typH * 0.65;
+  for (const l of lines) {
+    const syms = [];
+    (l.words || []).forEach(w => (w.symbols || []).forEach(s => syms.push(s)));
+    const cjk = syms.filter(isHan);
+    if (!cjk.length) continue;
+    const widths = cjk.map(s => s.bbox.x1 - s.bbox.x0).sort((a, b) => a - b);
+    const cw = widths[Math.floor(widths.length / 2)] || 1;
+    let cur = '', confSum = 0, lastX1 = null;
+    const flush = () => { if (cur && confSum / cur.length >= 35) out.push(cur); cur = ''; confSum = 0; };
+    for (const s of syms) {
+      const t = (s.text || '').trim();
+      if (!t) continue;
+      if (!isHan(s)) { flush(); lastX1 = null; continue; }   // 拼音、数字、标点 → 断开
+      if (lastX1 !== null && s.bbox.x0 - lastX1 > cw * 0.6) flush();
+      cur += t; confSum += s.confidence ?? 100; lastX1 = s.bbox.x1;
+    }
+    flush();
+  }
+  return out;
+}
+
+$('photo').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+  const box = $('ocrBox'), st = $('ocrStatus');
+  box.classList.remove('hidden'); $('ocrResult').classList.add('hidden'); $('ocrBar').classList.remove('hidden');
+  const setBar = p => $('ocrBarInner').style.width = Math.round(p * 100) + '%';
+  let fileNo = 0, worker = null;
+  try {
+    st.textContent = '正在准备识别组件…（第一次使用需要下载约 20MB，请稍等）';
+    setBar(0);
+    if (!window.Tesseract) await loadScript(TESS_URL);
+    worker = await Tesseract.createWorker('chi_sim', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') { st.textContent = `正在识别第 ${fileNo + 1} / ${files.length} 张照片… ${Math.round(m.progress * 100)}%`; setBar(m.progress); }
+        else if (/load/.test(m.status)) { st.textContent = '正在下载中文识别数据…（只有第一次需要）'; setBar(m.progress || 0); }
+      }
+    });
+    const found = [];
+    for (fileNo = 0; fileNo < files.length; fileNo++) {
+      const img = await prepImage(files[fileNo]);
+      const { data } = await worker.recognize(img, {}, { text: true, blocks: true });
+      found.push(...extractWords(data));
+    }
+    const uniq = [...new Set(found)];
+    $('ocrBar').classList.add('hidden');
+    st.textContent = uniq.length ? `识别到 ${uniq.length} 个词` : '没有识别到中文，可以换一张更清楚的照片再试';
+    $('ocrText').value = uniq.join('\n');
+    $('ocrResult').classList.remove('hidden');
+  } catch (err) {
+    $('ocrBar').classList.add('hidden');
+    st.textContent = '识别失败：' + (err.message || err);
+  } finally {
+    if (worker) worker.terminate();
+  }
+});
+
+function ocrApply(replace) {
+  const add = $('ocrText').value.trim();
+  if (!add) { alert('没有词语'); return; }
+  const old = $('words').value.trim();
+  $('words').value = replace || !old ? add : old + '\n' + add;
+  onWordsChanged();
+  $('ocrBox').classList.add('hidden');
+}
+onWordsChanged();
 
 // ---------- 键盘 ----------
 document.addEventListener('keydown', e => {
