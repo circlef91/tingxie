@@ -123,7 +123,8 @@
         <label>语音引擎
           <select id="engine">
             <option value="browser">浏览器自带（免费免配置）</option>
-            <option value="gcloud">Google 真人语音（Chirp 3 HD）</option>
+            <option value="aistudio">Google AI Studio 真人语音（免绑卡 · 推荐）</option>
+            <option value="gcloud">Google Cloud 真人语音（需绑卡）</option>
           </select>
         </label>
         <label>语速
@@ -137,6 +138,46 @@
       <div class="row" id="browserVoiceRow">
         <label>声音 <select id="voice"></select></label>
         <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
+      </div>
+      <div id="aiBox" class="hidden" style="background:#f3fbf6;border:1px solid #bfe6cc;border-radius:10px;padding:12px;margin:8px 0">
+        <div class="row" style="margin-top:0">
+          <label>真人声音
+            <select id="aivoice">
+              <option value="Aoede">Aoede（女声 · 温和清晰）</option>
+              <option value="Kore">Kore（女声 · 清脆明亮）</option>
+              <option value="Leda">Leda（女声 · 亲切自然）</option>
+              <option value="Zephyr">Zephyr（女声 · 轻快）</option>
+              <option value="Charon">Charon（男声 · 沉稳）</option>
+              <option value="Fenrir">Fenrir（男声 · 洪亮）</option>
+              <option value="Puck">Puck（男声 · 活泼）</option>
+              <option value="Orus">Orus（男声 · 稳重）</option>
+            </select>
+          </label>
+          <label>模型
+            <select id="aimodel">
+              <option value="auto">自动选择可用模型</option>
+              <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-preview-tts</option>
+              <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts</option>
+              <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts</option>
+            </select>
+          </label>
+          <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
+        </div>
+        <div class="row">
+          <label style="flex:1;min-width:240px">AI Studio Key
+            <input type="password" id="aikey" placeholder="粘贴 Google AI Studio 的 API Key（AIza...）" style="flex:1;font-size:15px;padding:5px 8px;border:1px solid #ccc;border-radius:6px">
+          </label>
+          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="const k=$('aikey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
+        </div>
+        <div class="row" style="gap:10px">
+          <button class="green" id="btnPrecache" style="font-size:15px;padding:6px 12px" onclick="togglePrecache()">⚡ 预下载当前词表语音</button>
+          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="clearAudioCache()">清空语音缓存</button>
+          <span class="hint" id="cacheInfo">本地已缓存 0 条语音</span>
+        </div>
+        <div class="hint">
+          免绑信用卡、<b>不会</b>触发 GCP 的 $300 试用倒计时。在 <code>aistudio.google.com/apikey</code> 点一下即可免费创建。<br>
+          读过的词会<b>永久缓存在本机</b>，重复读、复习都不再消耗免费额度；词多时建议家长先点一次“⚡ 预下载当前词表语音”。
+        </div>
       </div>
       <div id="gcloudBox" class="hidden" style="background:#f6f9ff;border:1px solid #d6e4ff;border-radius:10px;padding:12px;margin:8px 0">
         <div class="row" style="margin-top:0">
@@ -214,7 +255,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const LS = { words: 'tx_words', book: 'tx_book', settings: 'tx_settings', lists: 'tx_lists', cur: 'tx_curname', gkey: 'tx_gkey' };
+const LS = { words: 'tx_words', book: 'tx_book', settings: 'tx_settings', lists: 'tx_lists', cur: 'tx_curname', gkey: 'tx_gkey', aikey: 'tx_aikey' };
 
 let list = [], idx = 0, token = 0, paused = false, timer = null, voices = [], dirty = false;
 
@@ -227,7 +268,9 @@ function onWordsChanged() {
 $('words').addEventListener('input', () => { dirty = true; onWordsChanged(); });
 $('gkey').value = localStorage.getItem(LS.gkey) || '';
 $('gkey').addEventListener('input', () => { localStorage.setItem(LS.gkey, $('gkey').value.trim()); $('ttsErr').classList.add('hidden'); });
-const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'engine', 'gvoice', 'rate', 'voice'];
+$('aikey').value = localStorage.getItem(LS.aikey) || '';
+$('aikey').addEventListener('input', () => { localStorage.setItem(LS.aikey, $('aikey').value.trim()); resolvedAiModel = ''; $('ttsErr').classList.add('hidden'); });
+const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'engine', 'aivoice', 'aimodel', 'gvoice', 'rate', 'voice'];
 function saveSettings() {
   const s = {};
   settingIds.forEach(id => { const el = $(id); s[id] = el.type === 'checkbox' ? el.checked : el.value; });
@@ -248,11 +291,13 @@ refreshBookBtn();
 
 // ---------- 语音 ----------
 function updateEngineUI() {
-  const isG = $('engine').value === 'gcloud';
-  $('gcloudBox').classList.toggle('hidden', !isG);
-  $('browserVoiceRow').classList.toggle('hidden', isG);
-  $('noVoice').classList.toggle('hidden', isG || voices.length > 0);
+  const eng = $('engine').value;
+  $('aiBox').classList.toggle('hidden', eng !== 'aistudio');
+  $('gcloudBox').classList.toggle('hidden', eng !== 'gcloud');
+  $('browserVoiceRow').classList.toggle('hidden', eng !== 'browser');
+  $('noVoice').classList.toggle('hidden', eng !== 'browser' || voices.length > 0);
   $('ttsErr').classList.add('hidden');
+  refreshCacheInfo();
 }
 $('engine').addEventListener('change', updateEngineUI);
 
@@ -274,16 +319,77 @@ $('voice').addEventListener('change', () => {
   localStorage.setItem(LS.settings, JSON.stringify(s));
 });
 speechSynthesis.onvoiceschanged = loadVoices;
-loadVoices();
 
-// Google Cloud TTS 播放器、缓存与 iOS 解锁
+// 本地永久语音缓存（IndexedDB + 内存双层，无 IndexedDB 时自动退化为内存）
+const audioCache = new Map();
+let dbPromise = null;
+function openAudioDB() {
+  if (dbPromise) return dbPromise;
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  dbPromise = new Promise(res => {
+    try {
+      const req = indexedDB.open('tx_tts_cache', 1);
+      req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('clips')) req.result.createObjectStore('clips'); };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => res(null);
+    } catch { res(null); }
+  });
+  return dbPromise;
+}
+async function cacheGet(ck) {
+  if (audioCache.has(ck)) return audioCache.get(ck);
+  const db = await openAudioDB();
+  if (!db) return null;
+  return new Promise(res => {
+    try {
+      const tx = db.transaction('clips', 'readonly');
+      const r = tx.objectStore('clips').get(ck);
+      r.onsuccess = () => { if (r.result) audioCache.set(ck, r.result); res(r.result || null); };
+      r.onerror = () => res(null);
+    } catch { res(null); }
+  });
+}
+async function cachePut(ck, val) {
+  if (audioCache.size > 300) audioCache.delete(audioCache.keys().next().value);
+  audioCache.set(ck, val);
+  const db = await openAudioDB();
+  if (!db) { refreshCacheInfo(); return; }
+  await new Promise(res => {
+    try {
+      const tx = db.transaction('clips', 'readwrite');
+      tx.objectStore('clips').put(val, ck);
+      tx.oncomplete = tx.onerror = () => res();
+    } catch { res(); }
+  });
+  refreshCacheInfo();
+}
+async function refreshCacheInfo() {
+  const el = $('cacheInfo');
+  if (!el) return;
+  const db = await openAudioDB();
+  if (!db) { el.textContent = `本地已缓存 ${audioCache.size} 条语音`; return; }
+  try {
+    const r = db.transaction('clips', 'readonly').objectStore('clips').count();
+    r.onsuccess = () => { el.textContent = `本地已缓存 ${r.result} 条语音`; };
+  } catch { el.textContent = `本地已缓存 ${audioCache.size} 条语音`; }
+}
+async function clearAudioCache() {
+  if (!confirm('确定清空本地缓存的所有语音吗？')) return;
+  audioCache.clear();
+  const db = await openAudioDB();
+  if (db) await new Promise(res => {
+    try { const tx = db.transaction('clips', 'readwrite'); tx.objectStore('clips').clear(); tx.oncomplete = tx.onerror = () => res(); } catch { res(); }
+  });
+  refreshCacheInfo();
+}
+
+// 播放器与 iOS 解锁
 const player = new Audio();
 const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-let audioUnlocked = false, ttsAbort = null, playerDone = null;
-const audioCache = new Map();
+let audioUnlocked = false, ttsAbort = null, playerDone = null, curObjUrl = '';
 
 function unlockAudio() {
-  if (audioUnlocked || $('engine').value !== 'gcloud') return;
+  if (audioUnlocked || $('engine').value === 'browser') return;
   audioUnlocked = true;
   try { player.src = SILENT_WAV; const p = player.play(); if (p && p.catch) p.catch(() => {}); } catch {}
 }
@@ -293,6 +399,7 @@ function stopAudio() {
   if (ttsAbort) { ttsAbort.abort(); ttsAbort = null; }
   player.onended = player.onerror = null;
   try { if (!player.paused) player.pause(); } catch {}
+  if (curObjUrl) { URL.revokeObjectURL(curObjUrl); curObjUrl = ''; }
   if (playerDone) { const r = playerDone; playerDone = null; r(); }
 }
 
@@ -302,13 +409,110 @@ function showTtsErr(msg) {
   el.classList.toggle('hidden', !msg);
 }
 
-async function fetchGcloudAudio(text, signal) {
+// 将 Gemini 返回的 16-bit PCM (audio/L16) 加上 44 字节 WAV 文件头
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function pcmToWavBytes(pcm, sampleRate = 24000) {
+  const buf = new ArrayBuffer(44 + pcm.length);
+  const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + pcm.length, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(buf);
+  out.set(pcm, 44);
+  return out;
+}
+function bytesToDataUrl(bytes, mime) {
+  if (typeof URL.createObjectURL === 'function' && typeof Blob !== 'undefined') {
+    const u = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    curObjUrl = u;
+    return u;
+  }
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return `data:${mime};base64,` + btoa(bin);
+}
+
+// Google AI Studio (Gemini TTS)
+const AI_FALLBACK_MODELS = ['gemini-2.5-flash-preview-tts', 'gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'];
+let resolvedAiModel = '';
+async function resolveAiModel(key, signal) {
+  const sel = $('aimodel').value;
+  if (sel !== 'auto') return [sel];
+  if (resolvedAiModel) return [resolvedAiModel, ...AI_FALLBACK_MODELS.filter(m => m !== resolvedAiModel)];
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key), { signal });
+    const d = await r.json();
+    const names = (d.models || []).map(m => (m.name || '').replace(/^models\//, '')).filter(n => /tts/i.test(n));
+    const pref = AI_FALLBACK_MODELS.find(m => names.includes(m)) || names[0];
+    if (pref) { resolvedAiModel = pref; return [pref, ...names.filter(n => n !== pref)]; }
+  } catch {}
+  return AI_FALLBACK_MODELS;
+}
+
+async function fetchAiStudioClip(text, signal) {
+  const key = $('aikey').value.trim();
+  if (!key) throw new Error('请先填入 Google AI Studio 的 API Key');
+  const voice = $('aivoice').value;
+  const ck = `ai|${voice}|${text}`;
+  const hit = await cacheGet(ck);
+  if (hit) return hit;
+
+  const models = await resolveAiModel(key, signal);
+  let lastErr = null;
+  for (const model of models) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      lastErr = new Error(data.error?.message || `请求失败 (${res.status})`);
+      if (res.status === 404 || res.status === 400) continue; // 该模型不可用，自动试下一个 TTS 模型
+      throw lastErr;
+    }
+    const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
+    if (!part) throw new Error('没有返回音频数据');
+    resolvedAiModel = model;
+    const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
+    const raw = b64ToBytes(part.inlineData.data);
+    let clip;
+    if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
+      const rate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
+      clip = { mime: 'audio/wav', bytes: pcmToWavBytes(raw, rate) };
+    } else {
+      clip = { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
+    }
+    await cachePut(ck, clip);
+    return clip;
+  }
+  throw lastErr || new Error('没有找到可用的 TTS 模型');
+}
+
+// Google Cloud TTS
+async function fetchGcloudClip(text, signal) {
   const key = $('gkey').value.trim();
   if (!key) throw new Error('请先填入 Google Cloud API Key');
   const voice = $('gvoice').value;
   const rate = parseFloat($('rate').value);
-  const ck = `${voice}|${rate}|${text}`;
-  if (audioCache.has(ck)) return audioCache.get(ck);
+  const ck = `gc|${voice}|${rate}|${text}`;
+  const hit = await cacheGet(ck);
+  if (hit) return hit;
   const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(key), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -322,14 +526,64 @@ async function fetchGcloudAudio(text, signal) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error?.message || `请求失败 (${res.status})`);
   if (!data.audioContent) throw new Error('没有返回音频');
-  const src = 'data:audio/mp3;base64,' + data.audioContent;
-  if (audioCache.size > 200) audioCache.delete(audioCache.keys().next().value);
-  audioCache.set(ck, src);
-  return src;
+  const clip = { mime: 'audio/mp3', bytes: b64ToBytes(data.audioContent) };
+  await cachePut(ck, clip);
+  return clip;
 }
 
-function prefetchGcloud(text) {
-  if ($('engine').value === 'gcloud' && $('gkey').value.trim()) fetchGcloudAudio(text).catch(() => {});
+function prefetchCloud(text) {
+  const eng = $('engine').value;
+  if (eng === 'aistudio' && $('aikey').value.trim()) fetchAiStudioClip(text).catch(() => {});
+  else if (eng === 'gcloud' && $('gkey').value.trim()) fetchGcloudClip(text).catch(() => {});
+}
+
+// 批量预下载当前词表语音（温和限速，避免触发 AI Studio 免费频率限制）
+let precacheCtrl = null;
+async function togglePrecache() {
+  if (precacheCtrl) { precacheCtrl.abort(); precacheCtrl = null; return; }
+  if ($('engine').value !== 'aistudio') return;
+  if (!$('aikey').value.trim()) { alert('请先填入 AI Studio Key'); return; }
+  const items = parseWords($('words').value);
+  if (!items.length) { alert('词表还是空的，先输入词语'); return; }
+  const texts = ['听写开始', '听写结束，请检查'];
+  items.forEach((it, i) => {
+    if ($('announce').checked) texts.push(`第${i + 1}个`);
+    texts.push(it.hint ? `${it.word}，${it.hint}` : it.word);
+  });
+  const uniq = [...new Set(texts)];
+  const voice = $('aivoice').value;
+  const todo = [];
+  for (const t of uniq) { if (!(await cacheGet(`ai|${voice}|${t}`))) todo.push(t); }
+  if (!todo.length) { alert('当前词表的所有语音都已经缓存在本地啦！'); return; }
+
+  const ctrl = new AbortController();
+  precacheCtrl = ctrl;
+  const btn = $('btnPrecache');
+  showTtsErr('');
+  try {
+    for (let i = 0; i < todo.length; i++) {
+      btn.textContent = `⏳ 正在下载 ${i + 1}/${todo.length}（点此停止）`;
+      try {
+        await fetchAiStudioClip(todo[i], ctrl.signal);
+      } catch (e) {
+        if (e.name === 'AbortError') break;
+        if (/429|quota|rate|RESOURCE_EXHAUSTED/i.test(e.message)) {
+          btn.textContent = `⏳ 触发每分钟限速，等 12 秒继续 (${i + 1}/${todo.length})…`;
+          await sleep(12000);
+          i--; continue;
+        }
+        throw e;
+      }
+      if (i < todo.length - 1) await sleep(4500); // 每分钟约 12 次，平滑避开免费版 RPM 限制
+    }
+    if (!ctrl.signal.aborted) alert(`预下载完成！共缓存 ${todo.length} 条新语音，现在听写完全零延迟。`);
+  } catch (e) {
+    if (e.name !== 'AbortError') showTtsErr('预下载中断：' + (e.message || e));
+  } finally {
+    precacheCtrl = null;
+    btn.textContent = '⚡ 预下载当前词表语音';
+    refreshCacheInfo();
+  }
 }
 
 function speakBrowser(text) {
@@ -345,28 +599,35 @@ function speakBrowser(text) {
 }
 
 async function speak(text, isTest = false) {
-  if ($('engine').value !== 'gcloud') return speakBrowser(text);
+  const eng = $('engine').value;
+  if (eng === 'browser') return speakBrowser(text);
   const ctrl = new AbortController();
   ttsAbort = ctrl;
-  let src;
+  let clip;
   try {
-    src = await fetchGcloudAudio(text, ctrl.signal);
+    clip = eng === 'aistudio' ? await fetchAiStudioClip(text, ctrl.signal) : await fetchGcloudClip(text, ctrl.signal);
     if (ttsAbort === ctrl) ttsAbort = null;
   } catch (e) {
     if (ttsAbort === ctrl) ttsAbort = null;
     if (e.name === 'AbortError') return;
-    const msg = 'Google 语音出错：' + (e.message || e);
-    showTtsErr(msg);
+    showTtsErr('真人语音出错：' + (e.message || e));
     if (isTest) return;
-    $('status').textContent = '⚠️ Google 语音失败，临时改用浏览器声音';
+    $('status').textContent = '⚠️ 真人语音暂时受限，本词改用浏览器声音';
     return speakBrowser(text);
   }
   return new Promise(res => {
     playerDone = res;
-    const done = () => { player.onended = player.onerror = null; if (playerDone === res) playerDone = null; res(); };
+    const done = () => {
+      player.onended = player.onerror = null;
+      if (curObjUrl) { URL.revokeObjectURL(curObjUrl); curObjUrl = ''; }
+      if (playerDone === res) playerDone = null;
+      res();
+    };
     player.onended = done;
     player.onerror = done;
-    player.src = src;
+    player.src = bytesToDataUrl(clip.bytes, clip.mime);
+    const r = eng === 'aistudio' ? parseFloat($('rate').value) : 1;
+    try { player.preservesPitch = true; player.playbackRate = r; } catch {}
     const p = player.play();
     if (p && p.catch) p.catch(done);
   });
@@ -378,6 +639,7 @@ async function testVoice() {
   showTtsErr('');
   await speak('小朋友你好，我们开始听写吧', true);
 }
+loadVoices();
 
 // ---------- 词表 ----------
 function splitTokens(text) { return text.split(/[\n\r,，、;；\s]+/).map(s => s.trim()).filter(Boolean); }
@@ -517,10 +779,16 @@ function show(id) {
 
 function startWith(items, useAll = false) {
   if (!items.length) { alert('还没有词语哦'); return; }
-  if ($('engine').value === 'gcloud' && !$('gkey').value.trim()) {
-    alert('已选择 Google 真人语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
+  const eng = $('engine').value;
+  if (eng === 'aistudio' && !$('aikey').value.trim()) {
+    alert('已选择 Google AI Studio 语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
     return;
   }
+  if (eng === 'gcloud' && !$('gkey').value.trim()) {
+    alert('已选择 Google Cloud 语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
+    return;
+  }
+  if (precacheCtrl) { precacheCtrl.abort(); precacheCtrl = null; }
   unlockAudio();
   list = [...items];
   const n = parseInt($('pick').value) || 0;
@@ -532,7 +800,7 @@ function startWith(items, useAll = false) {
   const my = ++token;
   stopAudio();
   $('status').textContent = '准备好纸和笔哦';
-  if (list[0]) prefetchGcloud(list[0].hint ? `${list[0].word}，${list[0].hint}` : list[0].word);
+  if (list[0]) prefetchCloud(list[0].hint ? `${list[0].word}，${list[0].hint}` : list[0].word);
   speak('听写开始').then(() => sleep(800)).then(() => { if (my === token) readCurrent(); });
 }
 function startNormal() { startWith(parseWords($('words').value)); }
@@ -550,7 +818,7 @@ async function readCurrent() {
   $('num').textContent = idx + 1;
   $('status').textContent = '🔊 请听…';
   const text = item.hint ? `${item.word}，${item.hint}` : item.word;
-  prefetchGcloud(text);
+  prefetchCloud(text);
   if ($('announce').checked) { await speak(`第${idx + 1}个`); if (my !== token) return; await sleep(400); }
   const n = Math.max(1, parseInt($('repeat').value) || 1);
   for (let i = 0; i < n; i++) {
@@ -559,8 +827,8 @@ async function readCurrent() {
   }
   const nxt = list[idx + 1];
   if (nxt) {
-    if ($('announce').checked) prefetchGcloud(`第${idx + 2}个`);
-    prefetchGcloud(nxt.hint ? `${nxt.word}，${nxt.hint}` : nxt.word);
+    if ($('announce').checked) prefetchCloud(`第${idx + 2}个`);
+    prefetchCloud(nxt.hint ? `${nxt.word}，${nxt.hint}` : nxt.word);
   }
   if ($('auto').checked) {
     const total = ((parseInt($('base').value) || 0) + (parseInt($('perChar').value) || 4) * item.word.length) * 1000;
