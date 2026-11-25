@@ -292,7 +292,7 @@
           </div>
           <div class="row">
             <label style="flex:1;min-width:240px">AI Studio Key
-              <input type="password" id="aikey" placeholder="粘贴 Google AI Studio 的 API Key（AIza...）" style="flex:1;font-size:15px;padding:7px 10px;border:1.5px solid #c8dfd1;border-radius:10px;background:#fff">
+              <input type="password" id="aikey" placeholder="粘贴免费 AI Studio Key（可填多个，用逗号隔开自动轮换）" style="flex:1;font-size:15px;padding:7px 10px;border:1.5px solid #c8dfd1;border-radius:10px;background:#fff">
             </label>
             <button class="soft" style="font-size:14px;padding:6px 10px" onclick="const k=$('aikey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
             <button class="blue" style="font-size:14px;padding:6px 12px;box-shadow:none" onclick="openQrSync()">📱 扫码传到 iPad</button>
@@ -301,7 +301,7 @@
             <label><input type="checkbox" id="aiWordsOnly" checked> 省流加速模式（仅词语用真人语音，“第几个”用本地秒报）</label>
           </div>
           <div class="row" style="gap:10px">
-            <button class="green" id="btnPrecache" style="font-size:14px;padding:7px 14px;box-shadow:none" onclick="togglePrecache()">⚡ 预下载当前词表语音</button>
+            <button class="green" id="btnPrecache" style="font-size:14px;padding:7px 14px;box-shadow:none" onclick="togglePrecache()">⚡ 一键打包合成整表语音（仅耗 1 次额度）</button>
             <button class="soft" style="font-size:14px;padding:6px 12px" onclick="clearAudioCache()">清空语音缓存</button>
             <span class="hint" id="cacheInfo">本地已缓存 0 条语音</span>
           </div>
@@ -650,9 +650,10 @@ function bytesToDataUrl(bytes, mime) {
 
 // Google AI Studio (Gemini TTS)
 // 1. 强制 speechConfig.languageCode = 'cmn-CN'，彻底解决汉字被误读成日文音读/粤语的问题
-// 2. 首请求直接调用 gemini-3.8-flash-lite-tts（省掉先拉取 /v1beta/models 的 800ms 往返延迟），失败时再自动探测切换
-// 3. inflightClips 合并并发请求：后台预加载到一半时点播放，直接复用同一个请求，不重新发起、不浪费双倍时间与额度
-const AI_CACHE_VER = 'ai2'; // 升级缓存版本号，自动淘汰旧版未锁 cmn-CN 的日文发音缓存
+// 2. 整表合并单次合成 (Batch Synthesis + PCM 静音切分)：AI Studio 免费版单模型每天仅限 10 次请求 (limit: 10)，
+//    把 20 个词合并成 1 次请求并用静音检测切分成独立音频缓存，1 次额度 = 20 个词（省 95% 额度 + 听写全程零延迟！）
+// 3. 支持某模型当日额度用完 (per day) 自动切换备用模型，也支持填入多个免费 Key（逗号分隔）自动轮换
+const AI_CACHE_VER = 'ai2';
 const AI_FALLBACK_MODELS = [
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
@@ -660,8 +661,12 @@ const AI_FALLBACK_MODELS = [
   'gemini-2.5-flash-preview-tts'
 ];
 let resolvedAiModel = '', discoveredAiModels = null;
-const deadAiModels = new Set();
+const deadAiModels = new Set(); // 记录不可用或当日额度已耗尽的 `${keyIdx}|${model}`
 const inflightClips = new Map();
+
+function getAiKeys() {
+  return ($('aikey').value || '').split(/[\s,;，；]+/).map(s => s.trim()).filter(Boolean);
+}
 
 function rankTtsModel(m) {
   if (/pro/i.test(m)) return 9;
@@ -692,36 +697,109 @@ async function discoverAiModelsOnce(key) {
   return discoveredAiModels;
 }
 
-function getCandidateAiModels() {
+function getCandidateAiModels(keyIdx = 0) {
   const sel = $('aimodel').value;
   if (sel !== 'auto') return [sel];
-  const discSorted = (discoveredAiModels || []).filter(m => !deadAiModels.has(m)).sort((a, b) => rankTtsModel(a) - rankTtsModel(b));
-  const fallSorted = AI_FALLBACK_MODELS.filter(m => !deadAiModels.has(m) && !discSorted.includes(m));
+  const isDead = m => deadAiModels.has(`${keyIdx}|${m}`) || deadAiModels.has(m);
+  const discSorted = (discoveredAiModels || []).filter(m => !isDead(m)).sort((a, b) => rankTtsModel(a) - rankTtsModel(b));
+  const fallSorted = AI_FALLBACK_MODELS.filter(m => !isDead(m) && !discSorted.includes(m));
   const all = [...discSorted, ...fallSorted];
-  if (resolvedAiModel && !deadAiModels.has(resolvedAiModel)) {
+  if (resolvedAiModel && !isDead(resolvedAiModel)) {
     return [resolvedAiModel, ...all.filter(m => m !== resolvedAiModel)];
   }
   return all.length ? all : AI_FALLBACK_MODELS;
 }
 
-async function fetchAiStudioClip(text) {
-  const key = $('aikey').value.trim();
-  if (!key) throw new Error('请先填入 Google AI Studio 的 API Key');
-  const voice = $('aivoice').value;
-  const ck = `${AI_CACHE_VER}|${voice}|${text}`;
-  const hit = await cacheGet(ck);
-  if (hit) return hit;
-  if (inflightClips.has(ck)) return inflightClips.get(ck);
+// 16-bit LE PCM 静音能量检测切分器：将一次合并合成的多词音频精准切分为 K 段独立词语 PCM
+function splitPcmBySilence(pcmBytes, sampleRate, k) {
+  const nSamples = Math.floor(pcmBytes.byteLength / 2);
+  const frameSamples = Math.max(1, Math.round(sampleRate * 0.02)); // 20ms 一帧
+  const nFrames = Math.floor(nSamples / frameSamples);
+  if (k <= 1) return [pcmBytes];
+  if (nFrames < k * 6) return null;
 
-  const job = (async () => {
-    let models = getCandidateAiModels();
+  const view = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, nSamples * 2);
+  const rms = new Float32Array(nFrames);
+  for (let f = 0; f < nFrames; f++) {
+    let sum = 0, base = f * frameSamples;
+    for (let j = 0; j < frameSamples; j++) {
+      const s = view.getInt16((base + j) * 2, true);
+      sum += s * s;
+    }
+    rms[f] = Math.sqrt(sum / frameSamples);
+  }
+  const sorted = Float32Array.from(rms).sort();
+  const p15 = sorted[Math.floor(nFrames * 0.15)] || 0;
+  const p85 = sorted[Math.floor(nFrames * 0.85)] || 2000;
+  const thresh = Math.max(45, Math.min(350, p15 * 2.2 + p85 * 0.02));
+
+  const silent = new Uint8Array(nFrames);
+  for (let f = 0; f < nFrames; f++) silent[f] = rms[f] < thresh ? 1 : 0;
+  // 抹平静音中间偶然 1 帧 (20ms) 的细微杂音毛刺
+  for (let f = 1; f < nFrames - 1; f++) {
+    if (!silent[f] && silent[f - 1] && silent[f + 1]) silent[f] = 1;
+  }
+
+  let firstSp = 0, lastSp = nFrames - 1;
+  while (firstSp < nFrames && silent[firstSp]) firstSp++;
+  while (lastSp > firstSp && silent[lastSp]) lastSp--;
+  if (lastSp - firstSp < k * 4) return null;
+
+  const findGaps = minFrames => {
+    const gaps = [];
+    let f = firstSp;
+    while (f <= lastSp) {
+      if (silent[f]) {
+        let s = f;
+        while (f <= lastSp && silent[f]) f++;
+        if (s > firstSp && f <= lastSp && (f - s) >= minFrames) {
+          let eSum = 0;
+          for (let q = s; q < f; q++) eSum += rms[q];
+          gaps.push({ s, e: f, len: f - s, avg: eSum / (f - s) });
+        }
+      } else f++;
+    }
+    return gaps;
+  };
+
+  let gaps = findGaps(11); // 优先找 >= 220ms 的明显停顿
+  if (gaps.length < k - 1) gaps = findGaps(6); // 退一步 >= 120ms
+  if (gaps.length < k - 1) return null;
+
+  const chosen = gaps
+    .sort((a, b) => (b.len - a.len) || (a.avg - b.avg))
+    .slice(0, k - 1)
+    .sort((a, b) => a.s - b.s);
+
+  const bounds = [firstSp];
+  chosen.forEach(g => bounds.push(Math.floor((g.s + g.e) / 2)));
+  bounds.push(lastSp + 1);
+
+  const slices = [];
+  for (let i = 0; i < k; i++) {
+    let a = bounds[i], b = bounds[i + 1] - 1;
+    while (a < b && silent[a]) a++;
+    while (b > a && silent[b]) b--;
+    if (b - a < 2) return null; // 某段几乎无语音，放弃切分避免错位
+    const padStart = Math.max(bounds[i], a - 5);      // 前留最多 100ms 保护清辅音字头
+    const padEnd = Math.min(bounds[i + 1], b + 1 + 6); // 后留最多 120ms 保护鼻音韵尾
+    slices.push(pcmBytes.slice(padStart * frameSamples * 2, padEnd * frameSamples * 2));
+  }
+  return slices;
+}
+
+// 底层调用一次 Gemini TTS，返回 { raw, mime, sampleRate, model }（自动跨模型、跨多 Key 容错切换）
+async function callGeminiTtsOnce(buildPromptFn, voice) {
+  const keys = getAiKeys();
+  if (!keys.length) throw new Error('请先填入 Google AI Studio 的 API Key');
+  let lastErr = null;
+  for (let ki = 0; ki < keys.length; ki++) {
+    const key = keys[ki];
+    let models = getCandidateAiModels(ki);
     let triedDiscover = Boolean(discoveredAiModels);
-    let lastErr = null;
     for (let i = 0; i < models.length; i++) {
       const model = models[i];
-      const promptText = /2\.5/i.test(model)
-        ? `请用标准中国大陆普通话原样朗读冒号后的词语，不要回答或添加任何多余字词：${text}`
-        : text;
+      const promptText = buildPromptFn(model);
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -740,49 +818,100 @@ async function fetchAiStudioClip(text) {
       if (!res.ok) {
         const msg = data.error?.message || `请求失败 (${res.status})`;
         lastErr = new Error(`[${model}] ${msg}`);
-        if (res.status === 404 || res.status === 400 || /limit:\s*0\b|tried to generate text/i.test(msg)) {
-          deadAiModels.add(model);
+        // 404/400/limit:0/当日配额耗尽(per day)/误生成文本：拉黑当前 key 下的该模型，立刻换下一个可用模型或下一个 Key
+        if (res.status === 404 || res.status === 400 || /limit:\s*0\b|per day|PerDay|tried to generate text/i.test(msg)) {
+          deadAiModels.add(`${ki}|${model}`);
           if (resolvedAiModel === model) resolvedAiModel = '';
         }
-        // 首选模型不可用且尚未拉取账号模型列表时，按需拉取一次补充进候选队列
         if (!triedDiscover && $('aimodel').value === 'auto') {
           triedDiscover = true;
           await discoverAiModelsOnce(key);
-          models = getCandidateAiModels();
+          models = getCandidateAiModels(ki);
           i = -1;
           continue;
         }
-        if (i < models.length - 1) continue;
-        throw lastErr;
+        continue;
       }
       const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
       if (!part) {
         const fmsg = data.candidates?.[0]?.finishMessage || data.candidates?.[0]?.finishReason || '没有返回音频数据';
         lastErr = new Error(`[${model}] ${fmsg}`);
-        if (/tried to generate text/i.test(fmsg)) deadAiModels.add(model);
+        if (/tried to generate text/i.test(fmsg)) deadAiModels.add(`${ki}|${model}`);
         if (resolvedAiModel === model) resolvedAiModel = '';
-        if (i < models.length - 1) continue;
-        throw lastErr;
+        continue;
       }
       resolvedAiModel = model;
       const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
       const raw = b64ToBytes(part.inlineData.data);
-      let clip;
-      if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
-        const rate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
-        clip = { mime: 'audio/wav', bytes: pcmToWavBytes(raw, rate) };
-      } else {
-        clip = { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
-      }
-      await cachePut(ck, clip);
-      return clip;
+      const sampleRate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
+      return { raw, mime, sampleRate, model };
     }
-    throw lastErr || new Error('没有找到可用的 TTS 模型');
+  }
+  throw lastErr || new Error('今日免费语音次数已用完（可在 AI Studio 新建一个免费项目的 Key 逗号隔开填入，或明天自动恢复）');
+}
+
+async function fetchAiStudioClip(text) {
+  const keys = getAiKeys();
+  if (!keys.length) throw new Error('请先填入 Google AI Studio 的 API Key');
+  const voice = $('aivoice').value;
+  const ck = `${AI_CACHE_VER}|${voice}|${text}`;
+  const hit = await cacheGet(ck);
+  if (hit) return hit;
+  if (inflightClips.has(ck)) return inflightClips.get(ck);
+
+  const job = (async () => {
+    const { raw, mime, sampleRate } = await callGeminiTtsOnce(
+      model => /2\.5/i.test(model) ? `Say clearly: ${text}` : text,
+      voice
+    );
+    const clip = (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49))
+      ? { mime: 'audio/wav', bytes: pcmToWavBytes(raw, sampleRate) }
+      : { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
+    await cachePut(ck, clip);
+    return clip;
   })();
 
   inflightClips.set(ck, job);
   try { return await job; }
   finally { inflightClips.delete(ck); }
+}
+
+// 一次 API 请求打包合成最多 20 个词语并自动按静音切分缓存（省 95% 免费请求次数！）
+async function synthesizeAiBatch(texts) {
+  const voice = $('aivoice').value;
+  const uncached = [];
+  for (const t of texts) {
+    if (!(await cacheGet(`${AI_CACHE_VER}|${voice}|${t}`))) uncached.push(t);
+  }
+  if (!uncached.length) return 0;
+  if (uncached.length === 1) { await fetchAiStudioClip(uncached[0]); return 1; }
+
+  let savedCount = 0;
+  const CHUNK = 18;
+  for (let offset = 0; offset < uncached.length; offset += CHUNK) {
+    const group = uncached.slice(offset, offset + CHUNK);
+    if (group.length === 1) { await fetchAiStudioClip(group[0]); savedCount++; continue; }
+    const { raw, mime, sampleRate } = await callGeminiTtsOnce(model => {
+      if (/3\.8/i.test(model)) return group.map(t => t + '。').join(' <long pause> ');
+      if (/3\.1/i.test(model)) return group.map(t => t + '。').join(' [long pause] ');
+      return 'Say clearly with a long pause between each item: ' + group.map(t => t + '。').join(' ... ... ');
+    }, voice);
+
+    if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
+      const slices = splitPcmBySilence(raw, sampleRate, group.length);
+      if (slices && slices.length === group.length) {
+        for (let i = 0; i < group.length; i++) {
+          await cachePut(`${AI_CACHE_VER}|${voice}|${group[i]}`, { mime: 'audio/wav', bytes: pcmToWavBytes(slices[i], sampleRate) });
+          savedCount++;
+        }
+        continue;
+      }
+    }
+    // 极端情况下若未切分出对应段数，仅兜底拉取第 1 个词（不狂发 N 次请求耗光额度）
+    await fetchAiStudioClip(group[0]);
+    savedCount++;
+  }
+  return savedCount;
 }
 
 // Google Cloud TTS
@@ -823,22 +952,23 @@ function prefetchCloud(text) {
   else if (eng === 'gcloud' && $('gkey').value.trim()) fetchGcloudClip(text).catch(() => {});
 }
 
-// 滑动窗口提前预取后续 3 个词：利用“听写开始”与书写间隙把后面的音频提前拉回本地，实现切换零延迟
 function prefetchWindow(fromIdx) {
+  // AI Studio 统一走整表打包单次合成 (synthesizeAiBatch)，避免逐词请求耗光每日 10 次免费限额
+  if ($('engine').value !== 'gcloud') return;
   for (let k = fromIdx; k < Math.min(list.length, fromIdx + 3); k++) {
     const it = list[k];
     if (!it) continue;
-    if ($('announce').checked && !($('engine').value === 'aistudio' && $('aiWordsOnly').checked)) prefetchCloud(`第${k + 1}个`);
+    if ($('announce').checked) prefetchCloud(`第${k + 1}个`);
     prefetchCloud(it.hint ? `${it.word}，${it.hint}` : it.word);
   }
 }
 
-// 批量预下载当前词表语音（温和限速，避免触发 AI Studio 免费频率限制）
-let precacheCtrl = null;
+// 一键打包合成整表语音（18 个词合并为 1 次 API 请求，省 95% 额度且秒下完）
+let precacheCtrl = null, activeBatchJob = null;
 async function togglePrecache() {
-  if (precacheCtrl) { precacheCtrl.abort(); precacheCtrl = null; return; }
+  if (precacheCtrl) return;
   if ($('engine').value !== 'aistudio') return;
-  if (!$('aikey').value.trim()) { alert('请先填入 AI Studio Key'); return; }
+  if (!getAiKeys().length) { alert('请先填入 AI Studio Key'); return; }
   const items = parseWords($('words').value);
   if (!items.length) { alert('词表还是空的，先输入词语'); return; }
   const onlyWords = $('aiWordsOnly').checked;
@@ -853,38 +983,19 @@ async function togglePrecache() {
   for (const t of uniq) { if (!(await cacheGet(`${AI_CACHE_VER}|${voice}|${t}`))) todo.push(t); }
   if (!todo.length) { alert('当前词表的所有语音都已经缓存在本地啦！'); return; }
 
-  const ctrl = new AbortController();
-  precacheCtrl = ctrl;
+  precacheCtrl = true;
   const btn = $('btnPrecache');
+  const reqNeeded = Math.ceil(todo.length / 18);
+  btn.textContent = `⏳ 正在打包合成 ${todo.length} 个词（仅耗 ${reqNeeded} 次额度）…`;
   showTtsErr('');
-  let retries = 0;
   try {
-    for (let i = 0; i < todo.length; i++) {
-      if (ctrl.signal.aborted) break;
-      btn.textContent = `⏳ 正在下载 ${i + 1}/${todo.length}（点此停止）`;
-      try {
-        await fetchAiStudioClip(todo[i]);
-        retries = 0;
-      } catch (e) {
-        if (ctrl.signal.aborted) break;
-        const m = e.message || '';
-        const isRpm = /429|quota|rate|RESOURCE_EXHAUSTED/i.test(m) && !/limit:\s*0\b|per day|PerDay/i.test(m);
-        if (isRpm && retries < 2) {
-          retries++;
-          btn.textContent = `⏳ 触发每分钟限速，等 12 秒继续 (${i + 1}/${todo.length})…`;
-          await sleep(12000);
-          i--; continue;
-        }
-        throw e;
-      }
-      if (i < todo.length - 1) await sleep(4200);
-    }
-    if (!ctrl.signal.aborted) alert(`预下载完成！共缓存 ${todo.length} 条标准普通话语音，现在听写完全零延迟。`);
+    const saved = await synthesizeAiBatch(todo);
+    alert(`打包合成完成！共缓存 ${saved} 条标准普通话语音，现在听写全程零延迟、零耗额。`);
   } catch (e) {
-    if (!ctrl.signal.aborted) showTtsErr('预下载中断：' + (e.message || e));
+    showTtsErr('真人语音出错：' + (e.message || e));
   } finally {
     precacheCtrl = null;
-    btn.textContent = '⚡ 预下载当前词表语音';
+    btn.textContent = '⚡ 一键打包合成整表语音（仅耗 1 次额度）';
     refreshCacheInfo();
   }
 }
@@ -1210,7 +1321,7 @@ function renderProgressDots() {
 function startWith(items, useAll = false) {
   if (!items.length) { alert('还没有词语哦，请先展开家长设置在输入框里添加词语'); toggleParentZone(true); return; }
   const eng = $('engine').value;
-  if (eng === 'aistudio' && !$('aikey').value.trim()) {
+  if (eng === 'aistudio' && !getAiKeys().length) {
     alert('已选择 Google AI Studio 语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
     toggleParentZone(true);
     return;
@@ -1220,7 +1331,6 @@ function startWith(items, useAll = false) {
     toggleParentZone(true);
     return;
   }
-  if (precacheCtrl) { precacheCtrl.abort(); precacheCtrl = null; }
   unlockAudio();
   list = [...items];
   const n = parseInt($('pick').value) || 0;
@@ -1233,8 +1343,13 @@ function startWith(items, useAll = false) {
   const my = ++token;
   stopAudio();
   setStatus('准备好纸和笔哦', '');
-  // 开场立刻并行预加载前 3 个词，利用“听写开始”播报间隙消除首个词延迟
-  prefetchWindow(0);
+  if (eng === 'aistudio') {
+    // 开场一次性把本轮所有未缓存的词合并为 1 个请求打包合成，省掉逐词请求延迟与每日 10 次限额消耗
+    const batchTexts = [...new Set(list.map(it => it.hint ? `${it.word}，${it.hint}` : it.word))];
+    activeBatchJob = synthesizeAiBatch(batchTexts).catch(() => {}).finally(() => { activeBatchJob = null; });
+  } else {
+    prefetchWindow(0);
+  }
   speakPrompt('听写开始').then(() => sleep(600)).then(() => { if (my === token) readCurrent(); });
 }
 function startNormal() { startWith(parseWords($('words').value)); }
@@ -1255,6 +1370,11 @@ async function readCurrent() {
   prefetchWindow(idx);
   setStatus('🔊 正在播报题号…', 'speaking');
   if ($('announce').checked) { await speakPrompt(`第${idx + 1}个`); if (my !== token) return; await sleep(350); }
+  if (activeBatchJob) {
+    setStatus('🔊 正在打包准备整表真人语音…', 'speaking');
+    await activeBatchJob;
+    if (my !== token) return;
+  }
   const n = Math.max(1, parseInt($('repeat').value) || 1);
   for (let i = 0; i < n; i++) {
     setStatus(n > 1 ? `🔊 请听（第 ${i + 1} / ${n} 遍）…` : '🔊 请仔细听…', 'speaking');
