@@ -120,6 +120,12 @@
         <label>另加 <input type="number" id="base" min="0" max="30" value="3"> 秒</label>
       </div>
       <div class="row">
+        <label>语音引擎
+          <select id="engine">
+            <option value="browser">浏览器自带（免费免配置）</option>
+            <option value="gcloud">Google 真人语音（Chirp 3 HD）</option>
+          </select>
+        </label>
         <label>语速
           <select id="rate">
             <option value="0.6">很慢</option>
@@ -127,9 +133,39 @@
             <option value="1">正常</option>
           </select>
         </label>
+      </div>
+      <div class="row" id="browserVoiceRow">
         <label>声音 <select id="voice"></select></label>
         <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
       </div>
+      <div id="gcloudBox" class="hidden" style="background:#f6f9ff;border:1px solid #d6e4ff;border-radius:10px;padding:12px;margin:8px 0">
+        <div class="row" style="margin-top:0">
+          <label>真人声音
+            <select id="gvoice">
+              <option value="cmn-CN-Chirp3-HD-Aoede">Aoede（女声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Chirp3-HD-Kore">Kore（女声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Chirp3-HD-Achernar">Achernar（女声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Chirp3-HD-Charon">Charon（男声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Chirp3-HD-Fenrir">Fenrir（男声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Chirp3-HD-Achird">Achird（男声 · Chirp 3 HD）</option>
+              <option value="cmn-CN-Wavenet-A">WaveNet A（女声）</option>
+              <option value="cmn-CN-Wavenet-B">WaveNet B（男声）</option>
+            </select>
+          </label>
+          <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
+        </div>
+        <div class="row">
+          <label style="flex:1;min-width:240px">API Key
+            <input type="password" id="gkey" placeholder="粘贴 Google Cloud API Key" style="flex:1;font-size:15px;padding:5px 8px;border:1px solid #ccc;border-radius:6px">
+          </label>
+          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="const k=$('gkey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
+        </div>
+        <div class="hint">
+          Key 只保存在本机浏览器里，分享词表或导出备份时<b>不会</b>带出去。<br>
+          建议在 Google Cloud 后台给这个 Key 设置限制：仅限网站 <code>https://circlef91.github.io/*</code> + 仅限 <b>Cloud Text-to-Speech API</b>。
+        </div>
+      </div>
+      <div id="ttsErr" class="warn hidden"></div>
       <div id="noVoice" class="warn hidden">没有找到中文语音。建议用 <b>Microsoft Edge</b> 或 <b>Chrome</b> 浏览器打开本页面。</div>
     </div>
 
@@ -178,7 +214,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const LS = { words: 'tx_words', book: 'tx_book', settings: 'tx_settings', lists: 'tx_lists', cur: 'tx_curname' };
+const LS = { words: 'tx_words', book: 'tx_book', settings: 'tx_settings', lists: 'tx_lists', cur: 'tx_curname', gkey: 'tx_gkey' };
 
 let list = [], idx = 0, token = 0, paused = false, timer = null, voices = [], dirty = false;
 
@@ -189,7 +225,9 @@ function onWordsChanged() {
   $('wordCount').textContent = parseWords($('words').value).length;
 }
 $('words').addEventListener('input', () => { dirty = true; onWordsChanged(); });
-const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'rate', 'voice'];
+$('gkey').value = localStorage.getItem(LS.gkey) || '';
+$('gkey').addEventListener('input', () => { localStorage.setItem(LS.gkey, $('gkey').value.trim()); $('ttsErr').classList.add('hidden'); });
+const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'engine', 'gvoice', 'rate', 'voice'];
 function saveSettings() {
   const s = {};
   settingIds.forEach(id => { const el = $(id); s[id] = el.type === 'checkbox' ? el.checked : el.value; });
@@ -209,6 +247,15 @@ function refreshBookBtn() { $('btnBook').textContent = `📕 练错词本 (${get
 refreshBookBtn();
 
 // ---------- 语音 ----------
+function updateEngineUI() {
+  const isG = $('engine').value === 'gcloud';
+  $('gcloudBox').classList.toggle('hidden', !isG);
+  $('browserVoiceRow').classList.toggle('hidden', isG);
+  $('noVoice').classList.toggle('hidden', isG || voices.length > 0);
+  $('ttsErr').classList.add('hidden');
+}
+$('engine').addEventListener('change', updateEngineUI);
+
 function loadVoices() {
   voices = speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang) && !/HK|TW|yue/i.test(v.lang + v.name));
   if (!voices.length) voices = speechSynthesis.getVoices().filter(v => /zh/i.test(v.lang));
@@ -219,7 +266,7 @@ function loadVoices() {
   if (pick < 0) pick = voices.findIndex(v => /Xiaoxiao/i.test(v.name));
   if (pick < 0) pick = voices.findIndex(v => /Google/i.test(v.name));
   if (pick >= 0) sel.value = pick;
-  $('noVoice').classList.toggle('hidden', voices.length > 0);
+  updateEngineUI();
 }
 $('voice').addEventListener('change', () => {
   const s = JSON.parse(localStorage.getItem(LS.settings) || '{}');
@@ -229,7 +276,63 @@ $('voice').addEventListener('change', () => {
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
-function speak(text) {
+// Google Cloud TTS 播放器、缓存与 iOS 解锁
+const player = new Audio();
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+let audioUnlocked = false, ttsAbort = null, playerDone = null;
+const audioCache = new Map();
+
+function unlockAudio() {
+  if (audioUnlocked || $('engine').value !== 'gcloud') return;
+  audioUnlocked = true;
+  try { player.src = SILENT_WAV; const p = player.play(); if (p && p.catch) p.catch(() => {}); } catch {}
+}
+
+function stopAudio() {
+  speechSynthesis.cancel();
+  if (ttsAbort) { ttsAbort.abort(); ttsAbort = null; }
+  player.onended = player.onerror = null;
+  try { if (!player.paused) player.pause(); } catch {}
+  if (playerDone) { const r = playerDone; playerDone = null; r(); }
+}
+
+function showTtsErr(msg) {
+  const el = $('ttsErr');
+  el.textContent = msg;
+  el.classList.toggle('hidden', !msg);
+}
+
+async function fetchGcloudAudio(text, signal) {
+  const key = $('gkey').value.trim();
+  if (!key) throw new Error('请先填入 Google Cloud API Key');
+  const voice = $('gvoice').value;
+  const rate = parseFloat($('rate').value);
+  const ck = `${voice}|${rate}|${text}`;
+  if (audioCache.has(ck)) return audioCache.get(ck);
+  const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({
+      input: { text },
+      voice: { languageCode: 'cmn-CN', name: voice },
+      audioConfig: { audioEncoding: 'MP3', speakingRate: rate }
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error?.message || `请求失败 (${res.status})`);
+  if (!data.audioContent) throw new Error('没有返回音频');
+  const src = 'data:audio/mp3;base64,' + data.audioContent;
+  if (audioCache.size > 200) audioCache.delete(audioCache.keys().next().value);
+  audioCache.set(ck, src);
+  return src;
+}
+
+function prefetchGcloud(text) {
+  if ($('engine').value === 'gcloud' && $('gkey').value.trim()) fetchGcloudAudio(text).catch(() => {});
+}
+
+function speakBrowser(text) {
   return new Promise(res => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'zh-CN';
@@ -240,8 +343,41 @@ function speak(text) {
     speechSynthesis.speak(u);
   });
 }
+
+async function speak(text, isTest = false) {
+  if ($('engine').value !== 'gcloud') return speakBrowser(text);
+  const ctrl = new AbortController();
+  ttsAbort = ctrl;
+  let src;
+  try {
+    src = await fetchGcloudAudio(text, ctrl.signal);
+    if (ttsAbort === ctrl) ttsAbort = null;
+  } catch (e) {
+    if (ttsAbort === ctrl) ttsAbort = null;
+    if (e.name === 'AbortError') return;
+    const msg = 'Google 语音出错：' + (e.message || e);
+    showTtsErr(msg);
+    if (isTest) return;
+    $('status').textContent = '⚠️ Google 语音失败，临时改用浏览器声音';
+    return speakBrowser(text);
+  }
+  return new Promise(res => {
+    playerDone = res;
+    const done = () => { player.onended = player.onerror = null; if (playerDone === res) playerDone = null; res(); };
+    player.onended = done;
+    player.onerror = done;
+    player.src = src;
+    const p = player.play();
+    if (p && p.catch) p.catch(done);
+  });
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-function testVoice() { speechSynthesis.cancel(); speak('小朋友你好，我们开始听写吧'); }
+async function testVoice() {
+  unlockAudio();
+  stopAudio();
+  showTtsErr('');
+  await speak('小朋友你好，我们开始听写吧', true);
+}
 
 // ---------- 词表 ----------
 function splitTokens(text) { return text.split(/[\n\r,，、;；\s]+/).map(s => s.trim()).filter(Boolean); }
@@ -381,6 +517,11 @@ function show(id) {
 
 function startWith(items, useAll = false) {
   if (!items.length) { alert('还没有词语哦'); return; }
+  if ($('engine').value === 'gcloud' && !$('gkey').value.trim()) {
+    alert('已选择 Google 真人语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
+    return;
+  }
+  unlockAudio();
   list = [...items];
   const n = parseInt($('pick').value) || 0;
   if (!useAll && n > 0 && n < list.length) list = shuffleArr(list).slice(0, n);  // 随机抽 n 个
@@ -389,8 +530,9 @@ function startWith(items, useAll = false) {
   $('total').textContent = list.length;
   show('dictate');
   const my = ++token;
-  speechSynthesis.cancel();
+  stopAudio();
   $('status').textContent = '准备好纸和笔哦';
+  if (list[0]) prefetchGcloud(list[0].hint ? `${list[0].word}，${list[0].hint}` : list[0].word);
   speak('听写开始').then(() => sleep(800)).then(() => { if (my === token) readCurrent(); });
 }
 function startNormal() { startWith(parseWords($('words').value)); }
@@ -398,7 +540,7 @@ function startBook() { startWith(getBook()); }
 function clearBook() { if (confirm('确定清空错词本？')) setBook([]); }
 
 // ---------- 听写流程 ----------
-function stopAll() { token++; speechSynthesis.cancel(); clearInterval(timer); $('barInner').style.width = '0'; }
+function stopAll() { token++; stopAudio(); clearInterval(timer); $('barInner').style.width = '0'; }
 
 async function readCurrent() {
   stopAll();
@@ -408,11 +550,17 @@ async function readCurrent() {
   $('num').textContent = idx + 1;
   $('status').textContent = '🔊 请听…';
   const text = item.hint ? `${item.word}，${item.hint}` : item.word;
+  prefetchGcloud(text);
   if ($('announce').checked) { await speak(`第${idx + 1}个`); if (my !== token) return; await sleep(400); }
   const n = Math.max(1, parseInt($('repeat').value) || 1);
   for (let i = 0; i < n; i++) {
     await speak(text); if (my !== token) return;
     if (i < n - 1) { await sleep(1500); if (my !== token) return; }
+  }
+  const nxt = list[idx + 1];
+  if (nxt) {
+    if ($('announce').checked) prefetchGcloud(`第${idx + 2}个`);
+    prefetchGcloud(nxt.hint ? `${nxt.word}，${nxt.hint}` : nxt.word);
   }
   if ($('auto').checked) {
     const total = ((parseInt($('base').value) || 0) + (parseInt($('perChar').value) || 4) * item.word.length) * 1000;
