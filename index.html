@@ -156,11 +156,10 @@
           </label>
           <label>模型
             <select id="aimodel">
-              <option value="auto">自动选择免费模型</option>
+              <option value="auto">自动选择（优先 3.8 Flash）</option>
+              <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts（快·省额度）</option>
+              <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts（高音质）</option>
               <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-preview-tts</option>
-              <option value="gemini-2.5-flash-tts">gemini-2.5-flash-tts</option>
-              <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts</option>
-              <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts</option>
             </select>
           </label>
           <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
@@ -283,7 +282,12 @@ function saveSettings() {
 }
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem(LS.settings) || '{}');
-  settingIds.forEach(id => { if (s[id] === undefined || id === 'voice') return; const el = $(id); el.type === 'checkbox' ? el.checked = s[id] : el.value = s[id]; });
+  settingIds.forEach(id => {
+    if (s[id] === undefined || id === 'voice') return;
+    const el = $(id);
+    if (el.type === 'checkbox') el.checked = s[id];
+    else { el.value = s[id]; if (el.tagName === 'SELECT' && !el.value && el.options.length) el.selectedIndex = 0; }
+  });
   return s;
 }
 const savedSettings = loadSettings();
@@ -446,23 +450,26 @@ function bytesToDataUrl(bytes, mime) {
 }
 
 // Google AI Studio (Gemini TTS)
-// 注意：pro-tts 在免费版额度为 0 (limit: 0)，必须优先选 flash-lite / flash 系列
+// 优先使用 3.8-flash-lite-tts / 3.8-flash-tts（原生把输入当作纯朗读文稿，不会误触发对话报错）；排除无免费额度的 pro-tts
 const AI_FALLBACK_MODELS = [
-  'gemini-2.5-flash-preview-tts',
-  'gemini-2.5-flash-tts',
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
-  'gemini-3.1-flash-tts-preview'
+  'gemini-3.1-flash-tts-preview',
+  'gemini-2.5-flash-preview-tts'
 ];
 let resolvedAiModel = '', discoveredAiModels = null;
 const deadAiModels = new Set();
 
 function rankTtsModel(m) {
   if (/pro/i.test(m)) return 9;
-  if (/flash/i.test(m) && /lite/i.test(m)) return 0;
-  if (/2\.5.*flash/i.test(m)) return 1;
-  if (/flash/i.test(m)) return 2;
-  return 5;
+  if (/3\.8.*flash.*lite/i.test(m)) return 0;
+  if (/3\.8.*flash/i.test(m)) return 1;
+  if (/3\..*flash.*lite/i.test(m)) return 2;
+  if (/3\..*flash/i.test(m)) return 3;
+  if (/flash.*lite/i.test(m)) return 4;
+  if (/2\.5.*flash/i.test(m)) return 6;
+  if (/flash/i.test(m)) return 5;
+  return 7;
 }
 
 async function resolveAiModel(key, signal) {
@@ -502,12 +509,14 @@ async function fetchAiStudioClip(text, signal) {
   const models = await resolveAiModel(key, signal);
   let lastErr = null;
   for (const model of models) {
+    // 2.5 系列直接传短词容易误触发对话生成报错，需加纯朗读指令；3.8 系列原生支持直接传原文
+    const promptText = /2\.5/i.test(model) ? `Read the following transcript aloud verbatim without generating any text response: ${text}` : text;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal,
       body: JSON.stringify({
-        contents: [{ parts: [{ text }] }],
+        contents: [{ parts: [{ text: promptText }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
@@ -518,18 +527,23 @@ async function fetchAiStudioClip(text, signal) {
     if (!res.ok) {
       const msg = data.error?.message || `请求失败 (${res.status})`;
       lastErr = new Error(`[${model}] ${msg}`);
-      // 404/400 或免费额度为 0 (limit: 0) 的模型直接拉黑并自动换下一个模型
-      if (res.status === 404 || res.status === 400 || /limit:\s*0\b/i.test(msg)) {
+      if (res.status === 404 || res.status === 400 || /limit:\s*0\b|tried to generate text/i.test(msg)) {
         deadAiModels.add(model);
         if (resolvedAiModel === model) resolvedAiModel = '';
         continue;
       }
-      // 单个模型额度用完 (429) 时，也尝试其它可用 Flash TTS 模型（不同模型额度池独立）
-      if (res.status === 429 && models.length > 1) continue;
+      if (models.length > 1) continue;
       throw lastErr;
     }
     const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
-    if (!part) throw new Error('没有返回音频数据');
+    if (!part) {
+      const fmsg = data.candidates?.[0]?.finishMessage || data.candidates?.[0]?.finishReason || '没有返回音频数据';
+      lastErr = new Error(`[${model}] ${fmsg}`);
+      if (/tried to generate text/i.test(fmsg)) deadAiModels.add(model);
+      if (resolvedAiModel === model) resolvedAiModel = '';
+      if (models.length > 1) continue;
+      throw lastErr;
+    }
     resolvedAiModel = model;
     const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
     const raw = b64ToBytes(part.inlineData.data);
