@@ -7,261 +7,372 @@
 <meta name="apple-mobile-web-app-title" content="听写">
 <title>自助听写</title>
 <style>
+  :root {
+    --bg: #fdf6ea;
+    --card: #ffffff;
+    --ink: #2c3539;
+    --muted: #7a868e;
+    --brand: #e67e22;
+    --brand-soft: #fff3e2;
+    --green: #22a05b;
+    --green-soft: #edf9f2;
+    --blue: #2980b9;
+    --blue-soft: #eef6fd;
+    --red: #e04f44;
+    --red-soft: #fff0ef;
+    --border: #f0dfc8;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #fff8ec; color: #333; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 20px; }
-  h1 { text-align: center; color: #e67e22; margin: 10px 0 20px; }
-  .card { background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.08); margin-bottom: 16px; }
-  textarea { width: 100%; height: 180px; font-size: 20px; padding: 10px; border: 2px solid #f3c58b; border-radius: 10px; }
-  .hint { color: #888; font-size: 14px; line-height: 1.6; }
-  .row { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; margin: 10px 0; font-size: 16px; }
-  .row label { display: flex; align-items: center; gap: 6px; }
-  input[type=number] { width: 60px; font-size: 16px; padding: 3px; }
-  select { font-size: 15px; padding: 3px; max-width: 320px; }
-  button { font-size: 20px; padding: 12px 22px; border: none; border-radius: 12px; cursor: pointer; background: #f39c12; color: #fff; font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-  button:hover { filter: brightness(1.08); }
-  button.gray { background: #95a5a6; }
-  button.green { background: #27ae60; }
-  button.blue { background: #3498db; }
-  button.red { background: #e74c3c; }
-  button.big { font-size: 34px; padding: 26px 30px; flex: 1; min-width: 150px; }
+  body { margin: 0; font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background: radial-gradient(circle at top, #fffaf2 0%, var(--bg) 100%); color: var(--ink); min-height: 100vh; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 18px 16px 36px; }
+  .topbar { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 4px 0 16px; }
+  h1 { text-align: center; color: #d96b14; margin: 0; font-size: 28px; letter-spacing: 1px; }
+  .card { background: var(--card); border: 1px solid rgba(230,126,34,.14); border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(140,95,40,.07); margin-bottom: 16px; }
+  .hero-card { background: linear-gradient(180deg, #ffffff 0%, #fffaf2 100%); border: 2px solid #f5d8b0; padding: 22px 20px; }
+  .hero-summary { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 16px; color: #5c666d; }
+  .badge { background: var(--brand-soft); color: #b8560a; border: 1px solid #f4cfa0; padding: 5px 13px; border-radius: 999px; font-weight: 600; font-size: 15px; }
+  .badge.blue { background: var(--blue-soft); color: #1f6696; border-color: #c5dff5; }
+  .section-title { font-size: 18px; font-weight: 700; color: #3b444b; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  textarea { width: 100%; height: 170px; font-size: 19px; line-height: 1.6; padding: 12px 14px; border: 2px solid #eed2ae; border-radius: 14px; background: #fffdf9; color: var(--ink); font-family: inherit; transition: border-color .15s; }
+  textarea:focus { outline: none; border-color: var(--brand); background: #fff; }
+  .hint { color: var(--muted); font-size: 14px; line-height: 1.65; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin: 12px 0; font-size: 16px; }
+  .row label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--brand); cursor: pointer; }
+  input[type=number] { width: 58px; font-size: 16px; padding: 5px 4px; text-align: center; border: 1.5px solid #dfd3c3; border-radius: 8px; background: #fff; font-family: inherit; -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper { display: inline-flex; align-items: center; background: #f8f3eb; border: 1px solid #e6d7c3; border-radius: 10px; padding: 2px; gap: 2px; }
+  .stepper input[type=number] { border: none; background: transparent; width: 46px; font-weight: 700; color: var(--ink); padding: 4px 0; }
+  .step-btn { width: 30px; height: 30px; padding: 0; font-size: 18px; font-weight: 700; line-height: 1; border-radius: 8px; background: #fff; color: #555; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .step-btn:hover { background: #fff6e8; color: var(--brand); }
+  select { font-size: 15px; padding: 7px 10px; max-width: 320px; border: 1.5px solid #dfd3c3; border-radius: 10px; background: #fff; color: var(--ink); font-family: inherit; }
+  button { font-size: 18px; font-weight: 600; padding: 11px 20px; border: none; border-radius: 14px; cursor: pointer; background: var(--brand); color: #fff; font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform .08s ease, filter .15s ease, box-shadow .15s ease; box-shadow: 0 3px 0 rgba(0,0,0,.1); }
+  button:hover { filter: brightness(1.05); }
+  button:active { transform: translateY(2px) scale(0.99); box-shadow: 0 1px 0 rgba(0,0,0,.1); }
+  button.gray { background: #87959e; }
+  button.soft { background: #f3ece1; color: #5b656d; box-shadow: none; border: 1px solid #e5d8c5; }
+  button.soft:hover { background: #ebe1d2; }
+  button.green { background: var(--green); box-shadow: 0 4px 0 #197a44; }
+  button.blue { background: var(--blue); box-shadow: 0 4px 0 #1e5f8a; }
+  button.red { background: var(--red); box-shadow: 0 4px 0 #b3382f; }
+  button.big { font-size: 28px; padding: 22px 24px; flex: 1; min-width: 180px; border-radius: 18px; letter-spacing: .5px; }
   .btns { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 14px; }
-  .counter { text-align: center; font-size: 30px; margin: 10px 0; }
-  .counter b { font-size: 80px; color: #e67e22; }
-  .status { text-align: center; font-size: 22px; color: #666; min-height: 34px; }
-  .bar { height: 14px; background: #eee; border-radius: 7px; overflow: hidden; margin: 16px 0; }
-  .bar div { height: 100%; width: 0; background: #2ecc71; transition: width .1s linear; }
-  .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-  .ans { font-size: 26px; padding: 12px; border: 3px solid #2ecc71; border-radius: 12px; text-align: center; cursor: pointer; user-select: none; background: #f4fff7; }
-  .ans small { display: block; font-size: 14px; color: #999; }
-  .ans.wrong { border-color: #e74c3c; background: #ffecec; color: #c0392b; }
-  .hidden { display: none !important; }
-  .warn { background: #ffecec; color: #c0392b; padding: 10px; border-radius: 10px; }
+  .btns.small { justify-content: flex-start; margin-top: 8px; gap: 8px; }
+  .btns.small button { font-size: 15px; padding: 7px 13px; border-radius: 10px; box-shadow: none; }
+  .seg { display: inline-flex; background: #f5efe6; border: 1px solid #e6d7c3; border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { font-size: 14px; padding: 5px 12px; border-radius: 8px; background: transparent; color: #666; box-shadow: none; font-weight: 600; }
+  .seg button.active { background: #fff; color: #d96b14; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-  .chip { border: 2px solid #f3c58b; border-radius: 20px; padding: 6px 12px; font-size: 17px; display: flex; align-items: center; gap: 6px; background: #fffaf2; cursor: pointer; user-select: none; }
-  .chip:has(input:checked) { background: #ffe1b0; border-color: #e67e22; }
-  .chip input { width: 18px; height: 18px; margin: 0; }
-  .chip small { color: #999; }
-  .btns.small { justify-content: flex-start; margin-top: 6px; gap: 8px; }
-  .btns.small button { font-size: 16px; padding: 8px 14px; }
+  .chip { border: 1.5px solid #ecc99c; border-radius: 999px; padding: 7px 14px; font-size: 16px; display: inline-flex; align-items: center; gap: 6px; background: #fffaf2; cursor: pointer; user-select: none; transition: all .12s; }
+  .chip:hover { border-color: var(--brand); }
+  .chip.active, .chip:has(input:checked) { background: #ffe4ba; border-color: #e67e22; color: #8a3e00; font-weight: 600; }
+  .chip input { width: 17px; height: 17px; margin: 0; }
+  .chip.single-mode input { display: none; }
+  .chip small { color: #9a856c; font-weight: 400; }
+  .dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #eadfce; transition: all .2s; }
+  .dot.done { background: #7fd4a4; }
+  .dot.cur { width: 24px; border-radius: 6px; background: var(--brand); }
+  .counter { text-align: center; font-size: 24px; color: #7a868e; margin: 6px 0; }
+  .counter b { font-size: 72px; color: #d96b14; font-weight: 800; line-height: 1.1; margin: 0 4px; }
+  .status-pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 20px; border-radius: 999px; font-size: 21px; font-weight: 600; background: #f7f3ec; color: #555; min-height: 44px; transition: background .2s, color .2s; }
+  .status-pill.speaking { background: var(--blue-soft); color: #1c6394; animation: pulseSoft 1.3s ease-in-out infinite; }
+  .status-pill.writing { background: var(--green-soft); color: #197a44; }
+  @keyframes pulseSoft { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+  .status { text-align: center; font-size: 21px; color: #555; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+  .bar { height: 14px; background: #efe9df; border-radius: 999px; overflow: hidden; margin: 16px 0; }
+  .bar div { height: 100%; width: 0; background: linear-gradient(90deg, #2ecc71, #22a05b); border-radius: 999px; transition: width .1s linear; }
+  /* 核对页：教科书楷体 + 田字格微底纹 */
+  .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 12px; margin-top: 12px; }
+  .ans { position: relative; font-family: "Kaiti SC", "STKaiti", "KaiTi", "DFKai-SB", "楷体", serif; font-size: 34px; padding: 18px 10px 14px; border: 2.5px solid #63c78a; border-radius: 16px; text-align: center; cursor: pointer; user-select: none; color: #1f2d27; background-color: #f9fffb; background-image: linear-gradient(to right, transparent 49.5%, rgba(99,199,138,.18) 49.5%, rgba(99,199,138,.18) 50.5%, transparent 50.5%), linear-gradient(to bottom, transparent 49.5%, rgba(99,199,138,.18) 49.5%, rgba(99,199,138,.18) 50.5%, transparent 50.5%); transition: transform .1s, border-color .15s, background-color .15s; }
+  .ans:active { transform: scale(0.97); }
+  .ans small { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; position: absolute; top: 6px; left: 10px; font-size: 13px; color: #8da396; }
+  .ans .mark { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; position: absolute; top: 5px; right: 9px; font-size: 14px; font-weight: 700; color: var(--green); }
+  .ans.wrong { border-color: var(--red); background-color: #fff3f2; color: #b8291e; background-image: linear-gradient(to right, transparent 49.5%, rgba(224,79,68,.16) 49.5%, rgba(224,79,68,.16) 50.5%, transparent 50.5%), linear-gradient(to bottom, transparent 49.5%, rgba(224,79,68,.16) 49.5%, rgba(224,79,68,.16) 50.5%, transparent 50.5%); }
+  .ans.wrong .mark { color: var(--red); }
+  .book-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .book-tag { display: inline-flex; align-items: center; gap: 6px; background: #fff3f2; border: 1px solid #f3c0bc; color: #a83228; padding: 5px 11px; border-radius: 999px; font-size: 16px; }
+  .book-tag i { font-style: normal; cursor: pointer; font-weight: 700; padding: 0 3px; opacity: .7; }
+  .book-tag i:hover { opacity: 1; }
+  details.fold { border-top: 1px dashed #eadcc8; margin-top: 12px; padding-top: 10px; }
+  details.fold summary { cursor: pointer; color: #6c777f; font-size: 15px; font-weight: 600; user-select: none; }
+  .hidden { display: none !important; }
+  .warn { background: var(--red-soft); color: #b8291e; border: 1px solid #f5c2be; padding: 10px 12px; border-radius: 12px; font-size: 15px; margin-top: 8px; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 99; }
-  .modal-card { background: #fff; border-radius: 16px; padding: 20px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+  .modal-card { background: #fff; border-radius: 20px; padding: 22px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 14px 36px rgba(0,0,0,.22); }
   #qrSvg svg { width: 240px; height: 240px; display: block; margin: 8px auto; }
+  @media (pointer: coarse) { .kbd-hint { display: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>📝 自助听写</h1>
+  <div class="topbar">
+    <h1>📝 自助中文听写</h1>
+  </div>
 
-  <!-- ========== 家长设置页 ========== -->
+  <!-- ========== 首页（顶部儿童一键开练 + 下方家长折叠区） ========== -->
   <div id="setup">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <b>📚 我的词表</b>
-        <span class="hint">当前载入：<b id="curName">未命名</b></span>
+    <div class="card hero-card">
+      <div class="hero-summary">
+        <span class="badge">📚 词表：<span id="heroCurName">未命名</span>（<span id="heroCount">0</span> 词）</span>
+        <span class="badge blue" id="heroModeBadge">全部听写 · 读 2 遍</span>
       </div>
-      <div id="savedLists" class="chips"></div>
-      <div class="btns small">
-        <button class="green" onclick="saveList()">💾 保存当前词表</button>
-        <button class="blue" onclick="loadChecked()">载入勾选的</button>
-        <button class="red" onclick="deleteChecked()">删除勾选的</button>
+      <div class="btns" style="margin-top:4px">
+        <button class="big green" onclick="startNormal()">▶ 开始听写</button>
+        <button class="big red" id="btnBook" onclick="startBook()">📕 练错词本 (0)</button>
       </div>
-      <div class="btns small">
-        <button class="gray" onclick="shareList()">🔗 分享当前词表</button>
-        <button class="gray" onclick="pasteLink()">📥 粘贴链接导入</button>
-        <button class="gray" onclick="exportLists()">⬇ 导出备份</button>
-        <button class="gray" onclick="$('importFile').click()">⬆ 导入备份</button>
-        <input type="file" id="importFile" accept=".json,application/json" class="hidden">
+      <div class="btns small" style="justify-content:center;margin-top:14px">
+        <button class="soft" id="btnToggleParent" onclick="toggleParentZone()">⚙️ 展开家长词表与设置</button>
+        <button class="soft" id="btnViewBook" onclick="toggleBookDrawer()">📖 查看错词本</button>
       </div>
-      <div class="hint" style="margin-top:8px">勾选好几个词表一起载入，可以合并成一个大词表复习，再配合“随机抽”很好用。</div>
+      <!-- 错词本管理抽屉 -->
+      <div id="bookDrawer" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px dashed #eddac0">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <b style="font-size:16px;color:#a83228">📕 错词本明细（点 × 可移除已掌握的词）</b>
+          <button class="soft" style="font-size:13px;padding:4px 10px" onclick="clearBook()">清空全部错词</button>
+        </div>
+        <div id="bookList" class="book-tags"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <div><b>① 家长输入词语</b>（每行一个，或用空格/逗号隔开）</div>
-      <div class="btns" style="justify-content:flex-start;align-items:center;margin:8px 0 12px">
-        <button class="blue" onclick="$('photo').click()">📷 拍照 / 选照片识别词语</button>
-        <span class="hint" id="ocrModeHint"></span>
-        <input type="file" id="photo" accept="image/*,.heic,.heif" multiple class="hidden">
-      </div>
-      <!-- 拍照识别结果确认 -->
-      <div id="ocrBox" class="hidden" style="background:#eef6ff;border-radius:12px;padding:12px;margin-bottom:12px">
-        <div id="ocrStatus" style="font-size:17px">正在识别…</div>
-        <div class="bar" id="ocrBar"><div id="ocrBarInner"></div></div>
-        <div id="ocrFallbackBtns" class="btns small hidden">
-          <button class="blue" onclick="retryLastOcr(true)">🔄 重试 AI 识别</button>
-          <button class="gray" onclick="retryLastOcr(false)">改用本地离线识别</button>
-          <button class="gray" onclick="$('ocrBox').classList.add('hidden')">关闭</button>
+    <!-- 家长词表与设置区（有词表时默认收起，防止孩子一打开先看到答案） -->
+    <div id="parentZone">
+      <div class="card">
+        <div class="section-title">
+          <span>📚 我的词表</span>
+          <span class="hint">当前载入：<b id="curName">未命名</b></span>
         </div>
-        <div id="ocrResult" class="hidden">
-          <div class="hint">识别结果如下，<b>请检查并改正</b>（每行一个词，删掉不需要的行），然后加入词表：</div>
-          <textarea id="ocrText" style="height:160px"></textarea>
-          <div class="btns" style="justify-content:flex-start">
-            <button class="green" onclick="ocrApply(false)">加入词表</button>
-            <button class="blue" onclick="ocrApply(true)">替换整个词表</button>
-            <button class="gray" onclick="$('ocrBox').classList.add('hidden')">取消</button>
+        <div id="savedLists" class="chips"></div>
+        <div class="row" style="margin:6px 0">
+          <label style="font-size:14px;color:#6c777f"><input type="checkbox" id="mergeMode" onchange="updateMergeMode()"> 多选合并 / 批量删除模式</label>
+        </div>
+        <div class="btns small">
+          <button class="green" onclick="saveList()">💾 保存当前词表</button>
+          <button class="blue hidden" id="btnLoadChecked" onclick="loadChecked()">载入勾选的</button>
+          <button class="red hidden" id="btnDelChecked" onclick="deleteChecked()">删除勾选的</button>
+          <button class="soft" onclick="shareList()">🔗 分享词表</button>
+          <button class="soft" onclick="pasteLink()">📥 粘贴链接导入</button>
+        </div>
+        <details class="fold">
+          <summary>更多备份工具（导出 / 导入文件）</summary>
+          <div class="btns small" style="margin-top:8px">
+            <button class="soft" onclick="exportLists()">⬇ 导出全部词表与错词本</button>
+            <button class="soft" onclick="$('importFile').click()">⬆ 从备份文件导入</button>
+            <input type="file" id="importFile" accept=".json,application/json" class="hidden">
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span>① 编辑听写词语</span>
+          <span class="hint">共 <b id="wordCount">0</b> 个词</span>
+        </div>
+        <div class="btns small" style="align-items:center;margin:4px 0 12px">
+          <button class="blue" onclick="$('photo').click()">📷 拍照 / 选照片识别词语</button>
+          <span class="hint" id="ocrModeHint"></span>
+          <input type="file" id="photo" accept="image/*,.heic,.heif" multiple class="hidden">
+        </div>
+        <!-- 拍照识别结果确认 -->
+        <div id="ocrBox" class="hidden" style="background:#eef6ff;border:1px solid #cde2fb;border-radius:14px;padding:14px;margin-bottom:12px">
+          <div id="ocrStatus" style="font-size:16px;font-weight:600">正在识别…</div>
+          <div class="bar" id="ocrBar"><div id="ocrBarInner"></div></div>
+          <div id="ocrFallbackBtns" class="btns small hidden">
+            <button class="blue" onclick="retryLastOcr(true)">🔄 重试 AI 识别</button>
+            <button class="soft" onclick="retryLastOcr(false)">改用本地离线识别</button>
+            <button class="soft" onclick="$('ocrBox').classList.add('hidden')">关闭</button>
+          </div>
+          <div id="ocrResult" class="hidden">
+            <div class="hint">识别结果如下，<b>请检查并改正</b>（每行一个词，删掉不需要的行），然后加入词表：</div>
+            <textarea id="ocrText" style="height:150px;margin-top:6px"></textarea>
+            <div class="btns small">
+              <button class="green" onclick="ocrApply(false)">➕ 追加到当前词表</button>
+              <button class="blue" onclick="ocrApply(true)">🔄 替换当前词表</button>
+              <button class="soft" onclick="$('ocrBox').classList.add('hidden')">取消</button>
+            </div>
           </div>
         </div>
+        <textarea id="words" placeholder="每行一个词（或用空格、逗号隔开），例如：&#10;春天&#10;温暖&#10;燕子&#10;跑|跑步的跑"></textarea>
+        <div class="hint" style="margin-top:8px">
+          💡 同音字/多音字可加提示：写成 <code>跑|跑步的跑</code>，听写会读“跑，跑步的跑”，核对只显示“跑”。
+        </div>
       </div>
-      <textarea id="words" placeholder="例如：&#10;春天&#10;温暖&#10;燕子&#10;跑|跑步的跑"></textarea>
-      <div class="hint" style="margin-bottom:6px">词表共 <b id="wordCount">0</b> 个词。</div>
-      <div class="hint">
-        小技巧：同音字可以加提示，用竖线隔开，例如 <code>跑|跑步的跑</code>、<code>在|在家的在</code>。<br>
-        听写时会读“跑，跑步的跑”，核对时只显示“跑”。词语会自动保存在本浏览器里。<br>
-        拍照时尽量拍正、拍清楚、光线充足；印刷体效果最好，手写字可能识别不准。<br>
-        iPad 另一个办法：点一下输入框 → 再点一下 → 选“<b>扫描文本</b>”，可以用相机把字直接录进来。
-      </div>
-    </div>
 
-    <div class="card">
-      <div><b>② 设置</b></div>
-      <div class="row">
-        <label>每个词读 <input type="number" id="repeat" min="1" max="5" value="2"> 遍</label>
-        <label><input type="checkbox" id="announce" checked> 先报“第几个”</label>
-        <label><input type="checkbox" id="shuffle"> 打乱顺序</label>
-      </div>
-      <div class="row">
-        <label>🎲 随机抽 <input type="number" id="pick" min="0" placeholder="全部"> 个词听写</label>
-        <span class="hint">（空着或填 0 = 全部听写；抽出的词顺序也是随机的）</span>
-      </div>
-      <div class="row">
-        <label><input type="checkbox" id="auto" checked> 自动下一个</label>
-        <label>每个字留 <input type="number" id="perChar" min="1" max="30" value="4"> 秒书写时间</label>
-        <label>另加 <input type="number" id="base" min="0" max="30" value="3"> 秒</label>
-      </div>
-      <div class="row">
-        <label>语音引擎
-          <select id="engine">
-            <option value="browser">浏览器自带（免费免配置）</option>
-            <option value="aistudio">Google AI Studio 真人语音（免绑卡 · 推荐）</option>
-            <option value="gcloud">Google Cloud 真人语音（需绑卡）</option>
-          </select>
-        </label>
-        <label>语速
-          <select id="rate">
-            <option value="0.6">很慢</option>
-            <option value="0.8" selected>慢</option>
-            <option value="1">正常</option>
-          </select>
-        </label>
-      </div>
-      <div class="row" id="browserVoiceRow">
-        <label>声音 <select id="voice"></select></label>
-        <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
-      </div>
-      <div id="aiBox" class="hidden" style="background:#f3fbf6;border:1px solid #bfe6cc;border-radius:10px;padding:12px;margin:8px 0">
-        <div class="row" style="margin-top:0">
-          <label>真人声音
-            <select id="aivoice">
-              <option value="Aoede">Aoede（女声 · 温和清晰）</option>
-              <option value="Kore">Kore（女声 · 清脆明亮）</option>
-              <option value="Leda">Leda（女声 · 亲切自然）</option>
-              <option value="Zephyr">Zephyr（女声 · 轻快）</option>
-              <option value="Charon">Charon（男声 · 沉稳）</option>
-              <option value="Fenrir">Fenrir（男声 · 洪亮）</option>
-              <option value="Puck">Puck（男声 · 活泼）</option>
-              <option value="Orus">Orus（男声 · 稳重）</option>
-            </select>
-          </label>
-          <label>模型
-            <select id="aimodel">
-              <option value="auto">自动选择（优先 3.8 Flash）</option>
-              <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts（快·省额度）</option>
-              <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts（高音质）</option>
-              <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-preview-tts</option>
-            </select>
-          </label>
-          <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
+      <div class="card">
+        <div class="section-title">
+          <span>② 听写与语音设置</span>
+          <button class="soft" style="font-size:14px;padding:5px 12px" onclick="toggleParentZone(false)">🙈 收起家长区（交给孩子）</button>
         </div>
         <div class="row">
-          <label style="flex:1;min-width:240px">AI Studio Key
-            <input type="password" id="aikey" placeholder="粘贴 Google AI Studio 的 API Key（AIza...）" style="flex:1;font-size:15px;padding:5px 8px;border:1px solid #ccc;border-radius:6px">
+          <label>每词读
+            <span class="stepper">
+              <button type="button" class="step-btn" onclick="stepNum('repeat',-1,1,5)">−</button>
+              <input type="number" id="repeat" min="1" max="5" value="2">
+              <button type="button" class="step-btn" onclick="stepNum('repeat',1,1,5)">+</button>
+            </span> 遍
           </label>
-          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="const k=$('aikey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
-          <button class="blue" style="font-size:14px;padding:5px 10px" onclick="openQrSync()">📱 扫码传到 iPad</button>
-        </div>
-        <div class="row" style="gap:10px">
-          <label><input type="checkbox" id="aiWordsOnly" checked> 省流模式（仅词语用真人语音，“第几个”等提示用本地声音）</label>
-        </div>
-        <div class="row" style="gap:10px">
-          <button class="green" id="btnPrecache" style="font-size:15px;padding:6px 12px" onclick="togglePrecache()">⚡ 预下载当前词表语音</button>
-          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="clearAudioCache()">清空语音缓存</button>
-          <span class="hint" id="cacheInfo">本地已缓存 0 条语音</span>
-        </div>
-        <div class="hint">
-          免绑信用卡、<b>不会</b>触发 GCP 的 $300 试用倒计时。在 <code>aistudio.google.com/apikey</code> 点一下即可免费创建。<br>
-          读过的词会<b>永久缓存在本机</b>，重复读、复习都不再消耗免费额度；词多时建议家长先点一次“⚡ 预下载当前词表语音”。
-        </div>
-      </div>
-      <div id="gcloudBox" class="hidden" style="background:#f6f9ff;border:1px solid #d6e4ff;border-radius:10px;padding:12px;margin:8px 0">
-        <div class="row" style="margin-top:0">
-          <label>真人声音
-            <select id="gvoice">
-              <option value="cmn-CN-Chirp3-HD-Aoede">Aoede（女声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Chirp3-HD-Kore">Kore（女声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Chirp3-HD-Achernar">Achernar（女声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Chirp3-HD-Charon">Charon（男声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Chirp3-HD-Fenrir">Fenrir（男声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Chirp3-HD-Achird">Achird（男声 · Chirp 3 HD）</option>
-              <option value="cmn-CN-Wavenet-A">WaveNet A（女声）</option>
-              <option value="cmn-CN-Wavenet-B">WaveNet B（男声）</option>
-            </select>
-          </label>
-          <button class="gray" style="font-size:15px;padding:6px 12px" onclick="testVoice()">试听</button>
+          <label><input type="checkbox" id="announce" checked> 先报“第几个”</label>
+          <label><input type="checkbox" id="shuffle"> 打乱顺序</label>
         </div>
         <div class="row">
-          <label style="flex:1;min-width:240px">API Key
-            <input type="password" id="gkey" placeholder="粘贴 Google Cloud API Key" style="flex:1;font-size:15px;padding:5px 8px;border:1px solid #ccc;border-radius:6px">
+          <label>🎲 随机抽
+            <span class="stepper">
+              <button type="button" class="step-btn" onclick="stepNum('pick',-5,0,200)">−</button>
+              <input type="number" id="pick" min="0" placeholder="全部">
+              <button type="button" class="step-btn" onclick="stepNum('pick',5,0,200)">+</button>
+            </span> 个词
           </label>
-          <button class="gray" style="font-size:14px;padding:5px 10px" onclick="const k=$('gkey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
-          <button class="blue" style="font-size:14px;padding:5px 10px" onclick="openQrSync()">📱 扫码传到 iPad</button>
+          <span class="hint">（0 或留空 = 全部听写）</span>
         </div>
-        <div class="hint">
-          Key 只保存在本机浏览器里，分享词表或导出备份时<b>不会</b>带出去。<br>
-          建议在 Google Cloud 后台给这个 Key 设置限制：仅限网站 <code>https://circlef91.github.io/*</code> + 仅限 <b>Cloud Text-to-Speech API</b>。
+        <div class="row">
+          <label><input type="checkbox" id="auto" checked> 自动下一个</label>
+          <label>每字留
+            <span class="stepper">
+              <button type="button" class="step-btn" onclick="stepNum('perChar',-1,1,30)">−</button>
+              <input type="number" id="perChar" min="1" max="30" value="4">
+              <button type="button" class="step-btn" onclick="stepNum('perChar',1,1,30)">+</button>
+            </span> 秒
+          </label>
+          <label>另加
+            <span class="stepper">
+              <button type="button" class="step-btn" onclick="stepNum('base',-1,0,30)">−</button>
+              <input type="number" id="base" min="0" max="30" value="3">
+              <button type="button" class="step-btn" onclick="stepNum('base',1,0,30)">+</button>
+            </span> 秒
+          </label>
         </div>
+        <div class="row">
+          <label>语音引擎
+            <select id="engine">
+              <option value="browser">浏览器自带（免费免配置）</option>
+              <option value="aistudio">Google AI Studio 真人语音（免绑卡 · 推荐）</option>
+              <option value="gcloud">Google Cloud 真人语音（需绑卡）</option>
+            </select>
+          </label>
+          <label>语速
+            <select id="rate" class="hidden">
+              <option value="0.6">很慢</option>
+              <option value="0.8" selected>慢</option>
+              <option value="1">正常</option>
+            </select>
+            <span class="seg" id="rateSeg">
+              <button type="button" data-r="0.6" onclick="setRate('0.6')">很慢</button>
+              <button type="button" data-r="0.8" class="active" onclick="setRate('0.8')">慢</button>
+              <button type="button" data-r="1" onclick="setRate('1')">正常</button>
+            </span>
+          </label>
+        </div>
+        <div class="row" id="browserVoiceRow">
+          <label>声音 <select id="voice"></select></label>
+          <button class="soft" style="font-size:15px;padding:6px 14px" onclick="testVoice()">🔊 试听</button>
+        </div>
+        <div id="aiBox" class="hidden" style="background:#f3fbf6;border:1px solid #bfe6cc;border-radius:14px;padding:14px;margin:8px 0">
+          <div class="row" style="margin-top:0">
+            <label>真人声音
+              <select id="aivoice">
+                <option value="Aoede">Aoede（女声 · 温和清晰）</option>
+                <option value="Kore">Kore（女声 · 清脆明亮）</option>
+                <option value="Leda">Leda（女声 · 亲切自然）</option>
+                <option value="Zephyr">Zephyr（女声 · 轻快）</option>
+                <option value="Charon">Charon（男声 · 沉稳）</option>
+                <option value="Fenrir">Fenrir（男声 · 洪亮）</option>
+                <option value="Puck">Puck（男声 · 活泼）</option>
+                <option value="Orus">Orus（男声 · 稳重）</option>
+              </select>
+            </label>
+            <label>模型
+              <select id="aimodel">
+                <option value="auto">自动选择（优先 3.8 Flash Lite）</option>
+                <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts（极速·省额度）</option>
+                <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts（高音质）</option>
+                <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-preview-tts</option>
+              </select>
+            </label>
+            <button class="soft" style="font-size:15px;padding:6px 14px" onclick="testVoice()">🔊 试听</button>
+          </div>
+          <div class="row">
+            <label style="flex:1;min-width:240px">AI Studio Key
+              <input type="password" id="aikey" placeholder="粘贴 Google AI Studio 的 API Key（AIza...）" style="flex:1;font-size:15px;padding:7px 10px;border:1.5px solid #c8dfd1;border-radius:10px;background:#fff">
+            </label>
+            <button class="soft" style="font-size:14px;padding:6px 10px" onclick="const k=$('aikey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
+            <button class="blue" style="font-size:14px;padding:6px 12px;box-shadow:none" onclick="openQrSync()">📱 扫码传到 iPad</button>
+          </div>
+          <div class="row" style="gap:10px">
+            <label><input type="checkbox" id="aiWordsOnly" checked> 省流加速模式（仅词语用真人语音，“第几个”用本地秒报）</label>
+          </div>
+          <div class="row" style="gap:10px">
+            <button class="green" id="btnPrecache" style="font-size:14px;padding:7px 14px;box-shadow:none" onclick="togglePrecache()">⚡ 预下载当前词表语音</button>
+            <button class="soft" style="font-size:14px;padding:6px 12px" onclick="clearAudioCache()">清空语音缓存</button>
+            <span class="hint" id="cacheInfo">本地已缓存 0 条语音</span>
+          </div>
+          <div class="hint">
+            免绑信用卡、<b>不会</b>触发 GCP 的 $300 试用倒计时（在 <code>aistudio.google.com/apikey</code> 免费创建）。已强制锁定标准普通话发音（<code>cmn-CN</code>），并自动后台提前加载后续词语。
+          </div>
+        </div>
+        <div id="gcloudBox" class="hidden" style="background:#f6f9ff;border:1px solid #d6e4ff;border-radius:14px;padding:14px;margin:8px 0">
+          <div class="row" style="margin-top:0">
+            <label>真人声音
+              <select id="gvoice">
+                <option value="cmn-CN-Chirp3-HD-Aoede">Aoede（女声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Chirp3-HD-Kore">Kore（女声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Chirp3-HD-Achernar">Achernar（女声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Chirp3-HD-Charon">Charon（男声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Chirp3-HD-Fenrir">Fenrir（男声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Chirp3-HD-Achird">Achird（男声 · Chirp 3 HD）</option>
+                <option value="cmn-CN-Wavenet-A">WaveNet A（女声）</option>
+                <option value="cmn-CN-Wavenet-B">WaveNet B（男声）</option>
+              </select>
+            </label>
+            <button class="soft" style="font-size:15px;padding:6px 14px" onclick="testVoice()">🔊 试听</button>
+          </div>
+          <div class="row">
+            <label style="flex:1;min-width:240px">API Key
+              <input type="password" id="gkey" placeholder="粘贴 Google Cloud API Key" style="flex:1;font-size:15px;padding:7px 10px;border:1.5px solid #cbd9f0;border-radius:10px;background:#fff">
+            </label>
+            <button class="soft" style="font-size:14px;padding:6px 10px" onclick="const k=$('gkey');k.type=k.type==='password'?'text':'password'">显示/隐藏</button>
+            <button class="blue" style="font-size:14px;padding:6px 12px;box-shadow:none" onclick="openQrSync()">📱 扫码传到 iPad</button>
+          </div>
+          <div class="hint">
+            Key 只保存在本机浏览器里，分享词表或导出备份时<b>不会</b>带出去。
+          </div>
+        </div>
+        <div id="ttsErr" class="warn hidden"></div>
+        <div id="noVoice" class="warn hidden">没有找到中文语音。建议用 <b>Microsoft Edge</b> 或 <b>Chrome</b> 浏览器打开本页面。</div>
       </div>
-      <div id="ttsErr" class="warn hidden"></div>
-      <div id="noVoice" class="warn hidden">没有找到中文语音。建议用 <b>Microsoft Edge</b> 或 <b>Chrome</b> 浏览器打开本页面。</div>
-    </div>
-
-    <div class="btns">
-      <button class="big green" onclick="startNormal()">▶ 开始听写</button>
-      <button class="big red" id="btnBook" onclick="startBook()">📕 练错词本</button>
-    </div>
-    <div class="btns">
-      <button class="gray" style="font-size:15px;padding:6px 14px" onclick="clearBook()">清空错词本</button>
     </div>
   </div>
 
   <!-- ========== 孩子听写页 ========== -->
   <div id="dictate" class="hidden">
-    <div class="card">
-      <div class="counter">第 <b id="num">1</b> 个 <span style="color:#aaa">/ <span id="total">10</span></span></div>
-      <div class="status" id="status">准备好纸和笔哦</div>
+    <div class="card" style="padding:26px 22px">
+      <div id="progressDots" class="dots"></div>
+      <div class="counter">第 <b id="num">1</b> 个 <span style="color:#b0b8be">/ <span id="total">10</span></span></div>
+      <div class="status"><span id="status" class="status-pill">准备好纸和笔哦</span></div>
       <div class="bar"><div id="barInner"></div></div>
-      <div class="btns">
+      <div class="btns" style="margin-top:18px">
         <button class="big blue" onclick="readCurrent()">🔊 再读一遍</button>
         <button class="big green" onclick="next()">下一个 ▶</button>
       </div>
-      <div class="btns">
-        <button onclick="prev()" class="gray">◀ 上一个</button>
-        <button onclick="togglePause()" class="gray" id="btnPause">⏸ 暂停</button>
-        <button onclick="finish()" class="gray">提前结束</button>
+      <div class="btns" style="margin-top:16px">
+        <button onclick="prev()" class="soft">◀ 上一个</button>
+        <button onclick="togglePause()" class="soft" id="btnPause">⏸ 暂停</button>
+        <button onclick="finish()" class="soft">提前结束</button>
       </div>
-      <p class="hint" style="text-align:center">键盘：空格 = 再读一遍，→ = 下一个，← = 上一个</p>
+      <p class="hint kbd-hint" style="text-align:center;margin:12px 0 0">电脑快捷键：空格 = 再读一遍，→ = 下一个，← = 上一个</p>
     </div>
   </div>
 
   <!-- ========== 核对页 ========== -->
   <div id="check" class="hidden">
     <div class="card">
-      <div style="font-size:22px;margin-bottom:10px">✅ 听写完成！对照下面的答案检查，<b style="color:#c0392b">写错的点一下变红</b>。</div>
+      <div style="font-size:21px;font-weight:700;margin-bottom:4px">✅ 听写完成！对照课本楷体检查</div>
+      <div class="hint" style="margin-bottom:8px">写错的词<b style="color:var(--red)">点一下卡片变红（✗）</b>；离开本页时标红的错词会<b>自动存入错词本</b>，不怕忘点。</div>
       <div class="answers" id="answers"></div>
-      <div class="status" id="score" style="margin-top:14px"></div>
+      <div class="status" id="score" style="margin-top:16px;font-weight:700;color:#2c3539"></div>
       <div class="btns">
-        <button class="red" onclick="saveWrong()">把错的加入错词本</button>
-        <button class="blue" onclick="redoWrong()">马上重听错的词</button>
-        <button class="gray" onclick="goHome()">回首页</button>
+        <button class="red" onclick="saveWrong()">📕 存入错词本</button>
+        <button class="blue" onclick="redoWrong()">🔁 马上重听错词</button>
+        <button class="soft" onclick="goHome()">🏠 完成回首页</button>
       </div>
     </div>
   </div>
@@ -289,15 +400,28 @@
 
 <script>
 const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const LS = { words: 'tx_words', book: 'tx_book', settings: 'tx_settings', lists: 'tx_lists', cur: 'tx_curname', gkey: 'tx_gkey', aikey: 'tx_aikey' };
 
 let list = [], idx = 0, token = 0, paused = false, timer = null, voices = [], dirty = false;
 
-// ---------- 存储 ----------
+// ---------- 存储与顶部摘要联动 ----------
 $('words').value = localStorage.getItem(LS.words) || '';
+function syncHeroSummary() {
+  const cnt = parseWords($('words').value).length;
+  $('wordCount').textContent = cnt;
+  if ($('heroCount')) $('heroCount').textContent = cnt;
+  if ($('heroCurName')) $('heroCurName').textContent = (typeof curName !== 'undefined' && curName) ? curName : '未命名';
+  if ($('heroModeBadge')) {
+    const pk = parseInt($('pick').value) || 0;
+    const rp = Math.max(1, parseInt($('repeat').value) || 2);
+    const modeTxt = pk > 0 ? `随机抽 ${pk} 个` : ($('shuffle').checked ? '全部打乱' : '全部顺序');
+    $('heroModeBadge').textContent = `${modeTxt} · 读 ${rp} 遍`;
+  }
+}
 function onWordsChanged() {
   localStorage.setItem(LS.words, $('words').value);
-  $('wordCount').textContent = parseWords($('words').value).length;
+  syncHeroSummary();
 }
 $('words').addEventListener('input', () => { dirty = true; onWordsChanged(); });
 $('gkey').value = localStorage.getItem(LS.gkey) || '';
@@ -305,10 +429,28 @@ $('gkey').addEventListener('input', () => { localStorage.setItem(LS.gkey, $('gke
 $('aikey').value = localStorage.getItem(LS.aikey) || '';
 $('aikey').addEventListener('input', () => { localStorage.setItem(LS.aikey, $('aikey').value.trim()); resolvedAiModel = ''; resolvedVisionModel = ''; discoveredAiModels = null; discoveredVisionModels = null; deadAiModels.clear(); deadVisionModels.clear(); updateOcrHint(); $('ttsErr').classList.add('hidden'); });
 const settingIds = ['repeat', 'announce', 'shuffle', 'pick', 'auto', 'perChar', 'base', 'engine', 'aivoice', 'aimodel', 'aiWordsOnly', 'gvoice', 'rate', 'voice'];
+function syncRateSeg() {
+  const v = String(parseFloat($('rate').value));
+  document.querySelectorAll('#rateSeg button').forEach(b => b.classList.toggle('active', String(parseFloat(b.dataset.r)) === v));
+}
+function setRate(v) {
+  $('rate').value = v;
+  syncRateSeg();
+  saveSettings();
+}
+function stepNum(id, delta, min, max) {
+  const el = $(id);
+  const cur = parseInt(el.value) || 0;
+  const nxt = Math.max(min, Math.min(max, cur + delta));
+  el.value = (id === 'pick' && nxt === 0) ? '' : nxt;
+  saveSettings();
+  syncHeroSummary();
+}
 function saveSettings() {
   const s = {};
   settingIds.forEach(id => { const el = $(id); s[id] = el.type === 'checkbox' ? el.checked : el.value; });
   localStorage.setItem(LS.settings, JSON.stringify(s));
+  syncHeroSummary();
 }
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem(LS.settings) || '{}');
@@ -321,11 +463,38 @@ function loadSettings() {
   return s;
 }
 const savedSettings = loadSettings();
-settingIds.forEach(id => $(id).addEventListener('change', saveSettings));
+syncRateSeg();
+settingIds.forEach(id => $(id).addEventListener('change', () => { syncRateSeg(); saveSettings(); }));
+$('pick').addEventListener('input', syncHeroSummary);
 
+// 家长区折叠与错词本管理抽屉
+function toggleParentZone(force) {
+  const z = $('parentZone');
+  const showIt = typeof force === 'boolean' ? force : z.classList.contains('hidden');
+  z.classList.toggle('hidden', !showIt);
+  $('btnToggleParent').textContent = showIt ? '🙈 收起家长词表与设置' : '⚙️ 展开家长词表与设置';
+}
 const getBook = () => JSON.parse(localStorage.getItem(LS.book) || '[]');
-const setBook = b => { localStorage.setItem(LS.book, JSON.stringify(b)); refreshBookBtn(); };
+const setBook = b => { localStorage.setItem(LS.book, JSON.stringify(b)); refreshBookBtn(); renderBookDrawer(); };
 function refreshBookBtn() { $('btnBook').textContent = `📕 练错词本 (${getBook().length})`; }
+function renderBookDrawer() {
+  const box = $('bookList');
+  if (!box) return;
+  const b = getBook();
+  box.innerHTML = b.length
+    ? b.map((it, i) => `<span class="book-tag">${esc(it.word)}<i title="移除" onclick="removeBookWord(${i})">×</i></span>`).join('')
+    : '<span class="hint">错词本是空的，继续保持哦 🎉</span>';
+}
+function toggleBookDrawer() {
+  const d = $('bookDrawer');
+  d.classList.toggle('hidden');
+  if (!d.classList.contains('hidden')) renderBookDrawer();
+}
+function removeBookWord(i) {
+  const b = getBook();
+  b.splice(i, 1);
+  setBook(b);
+}
 refreshBookBtn();
 
 // ---------- 语音 ----------
@@ -480,7 +649,10 @@ function bytesToDataUrl(bytes, mime) {
 }
 
 // Google AI Studio (Gemini TTS)
-// 优先使用 3.8-flash-lite-tts / 3.8-flash-tts（原生把输入当作纯朗读文稿，不会误触发对话报错）；排除无免费额度的 pro-tts
+// 1. 强制 speechConfig.languageCode = 'cmn-CN'，彻底解决汉字被误读成日文音读/粤语的问题
+// 2. 首请求直接调用 gemini-3.8-flash-lite-tts（省掉先拉取 /v1beta/models 的 800ms 往返延迟），失败时再自动探测切换
+// 3. inflightClips 合并并发请求：后台预加载到一半时点播放，直接复用同一个请求，不重新发起、不浪费双倍时间与额度
+const AI_CACHE_VER = 'ai2'; // 升级缓存版本号，自动淘汰旧版未锁 cmn-CN 的日文发音缓存
 const AI_FALLBACK_MODELS = [
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
@@ -489,6 +661,7 @@ const AI_FALLBACK_MODELS = [
 ];
 let resolvedAiModel = '', discoveredAiModels = null;
 const deadAiModels = new Set();
+const inflightClips = new Map();
 
 function rankTtsModel(m) {
   if (/pro/i.test(m)) return 9;
@@ -502,24 +675,27 @@ function rankTtsModel(m) {
   return 7;
 }
 
-async function resolveAiModel(key, signal) {
+async function discoverAiModelsOnce(key) {
+  if (discoveredAiModels) return discoveredAiModels;
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
+    const d = await r.json();
+    discoveredAiModels = (d.models || [])
+      .map(m => (m.name || '').replace(/^models\//, ''))
+      .filter(n => /tts/i.test(n) && !/pro/i.test(n));
+    const selEl = $('aimodel');
+    const existing = new Set([...selEl.options].map(o => o.value));
+    discoveredAiModels.forEach(n => {
+      if (!existing.has(n)) { const o = document.createElement('option'); o.value = o.textContent = n; selEl.appendChild(o); }
+    });
+  } catch { discoveredAiModels = []; }
+  return discoveredAiModels;
+}
+
+function getCandidateAiModels() {
   const sel = $('aimodel').value;
   if (sel !== 'auto') return [sel];
-  if (!discoveredAiModels) {
-    try {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key), { signal });
-      const d = await r.json();
-      discoveredAiModels = (d.models || [])
-        .map(m => (m.name || '').replace(/^models\//, ''))
-        .filter(n => /tts/i.test(n) && !/pro/i.test(n));
-      const selEl = $('aimodel');
-      const existing = new Set([...selEl.options].map(o => o.value));
-      discoveredAiModels.forEach(n => {
-        if (!existing.has(n)) { const o = document.createElement('option'); o.value = o.textContent = n; selEl.appendChild(o); }
-      });
-    } catch { discoveredAiModels = []; }
-  }
-  const discSorted = discoveredAiModels.filter(m => !deadAiModels.has(m)).sort((a, b) => rankTtsModel(a) - rankTtsModel(b));
+  const discSorted = (discoveredAiModels || []).filter(m => !deadAiModels.has(m)).sort((a, b) => rankTtsModel(a) - rankTtsModel(b));
   const fallSorted = AI_FALLBACK_MODELS.filter(m => !deadAiModels.has(m) && !discSorted.includes(m));
   const all = [...discSorted, ...fallSorted];
   if (resolvedAiModel && !deadAiModels.has(resolvedAiModel)) {
@@ -528,70 +704,89 @@ async function resolveAiModel(key, signal) {
   return all.length ? all : AI_FALLBACK_MODELS;
 }
 
-async function fetchAiStudioClip(text, signal) {
+async function fetchAiStudioClip(text) {
   const key = $('aikey').value.trim();
   if (!key) throw new Error('请先填入 Google AI Studio 的 API Key');
   const voice = $('aivoice').value;
-  const ck = `ai|${voice}|${text}`;
+  const ck = `${AI_CACHE_VER}|${voice}|${text}`;
   const hit = await cacheGet(ck);
   if (hit) return hit;
+  if (inflightClips.has(ck)) return inflightClips.get(ck);
 
-  const models = await resolveAiModel(key, signal);
-  let lastErr = null;
-  for (const model of models) {
-    // 2.5 系列直接传短词容易误触发对话生成报错，需加纯朗读指令；3.8 系列原生支持直接传原文
-    const promptText = /2\.5/i.test(model) ? `Read the following transcript aloud verbatim without generating any text response: ${text}` : text;
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+  const job = (async () => {
+    let models = getCandidateAiModels();
+    let triedDiscover = Boolean(discoveredAiModels);
+    let lastErr = null;
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i];
+      const promptText = /2\.5/i.test(model)
+        ? `请用标准中国大陆普通话原样朗读冒号后的词语，不要回答或添加任何多余字词：${text}`
+        : text;
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              languageCode: 'cmn-CN',
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
+            }
+          }
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data.error?.message || `请求失败 (${res.status})`;
+        lastErr = new Error(`[${model}] ${msg}`);
+        if (res.status === 404 || res.status === 400 || /limit:\s*0\b|tried to generate text/i.test(msg)) {
+          deadAiModels.add(model);
+          if (resolvedAiModel === model) resolvedAiModel = '';
         }
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = data.error?.message || `请求失败 (${res.status})`;
-      lastErr = new Error(`[${model}] ${msg}`);
-      if (res.status === 404 || res.status === 400 || /limit:\s*0\b|tried to generate text/i.test(msg)) {
-        deadAiModels.add(model);
-        if (resolvedAiModel === model) resolvedAiModel = '';
-        continue;
+        // 首选模型不可用且尚未拉取账号模型列表时，按需拉取一次补充进候选队列
+        if (!triedDiscover && $('aimodel').value === 'auto') {
+          triedDiscover = true;
+          await discoverAiModelsOnce(key);
+          models = getCandidateAiModels();
+          i = -1;
+          continue;
+        }
+        if (i < models.length - 1) continue;
+        throw lastErr;
       }
-      if (models.length > 1) continue;
-      throw lastErr;
+      const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
+      if (!part) {
+        const fmsg = data.candidates?.[0]?.finishMessage || data.candidates?.[0]?.finishReason || '没有返回音频数据';
+        lastErr = new Error(`[${model}] ${fmsg}`);
+        if (/tried to generate text/i.test(fmsg)) deadAiModels.add(model);
+        if (resolvedAiModel === model) resolvedAiModel = '';
+        if (i < models.length - 1) continue;
+        throw lastErr;
+      }
+      resolvedAiModel = model;
+      const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
+      const raw = b64ToBytes(part.inlineData.data);
+      let clip;
+      if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
+        const rate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
+        clip = { mime: 'audio/wav', bytes: pcmToWavBytes(raw, rate) };
+      } else {
+        clip = { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
+      }
+      await cachePut(ck, clip);
+      return clip;
     }
-    const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
-    if (!part) {
-      const fmsg = data.candidates?.[0]?.finishMessage || data.candidates?.[0]?.finishReason || '没有返回音频数据';
-      lastErr = new Error(`[${model}] ${fmsg}`);
-      if (/tried to generate text/i.test(fmsg)) deadAiModels.add(model);
-      if (resolvedAiModel === model) resolvedAiModel = '';
-      if (models.length > 1) continue;
-      throw lastErr;
-    }
-    resolvedAiModel = model;
-    const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
-    const raw = b64ToBytes(part.inlineData.data);
-    let clip;
-    if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
-      const rate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
-      clip = { mime: 'audio/wav', bytes: pcmToWavBytes(raw, rate) };
-    } else {
-      clip = { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
-    }
-    await cachePut(ck, clip);
-    return clip;
-  }
-  throw lastErr || new Error('没有找到可用的 TTS 模型');
+    throw lastErr || new Error('没有找到可用的 TTS 模型');
+  })();
+
+  inflightClips.set(ck, job);
+  try { return await job; }
+  finally { inflightClips.delete(ck); }
 }
 
 // Google Cloud TTS
-async function fetchGcloudClip(text, signal) {
+async function fetchGcloudClip(text) {
   const key = $('gkey').value.trim();
   if (!key) throw new Error('请先填入 Google Cloud API Key');
   const voice = $('gvoice').value;
@@ -599,28 +794,43 @@ async function fetchGcloudClip(text, signal) {
   const ck = `gc|${voice}|${rate}|${text}`;
   const hit = await cacheGet(ck);
   if (hit) return hit;
-  const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(key), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal,
-    body: JSON.stringify({
-      input: { text },
-      voice: { languageCode: 'cmn-CN', name: voice },
-      audioConfig: { audioEncoding: 'MP3', speakingRate: rate }
-    })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error?.message || `请求失败 (${res.status})`);
-  if (!data.audioContent) throw new Error('没有返回音频');
-  const clip = { mime: 'audio/mp3', bytes: b64ToBytes(data.audioContent) };
-  await cachePut(ck, clip);
-  return clip;
+  if (inflightClips.has(ck)) return inflightClips.get(ck);
+  const job = (async () => {
+    const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text },
+        voice: { languageCode: 'cmn-CN', name: voice },
+        audioConfig: { audioEncoding: 'MP3', speakingRate: rate }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || `请求失败 (${res.status})`);
+    if (!data.audioContent) throw new Error('没有返回音频');
+    const clip = { mime: 'audio/mp3', bytes: b64ToBytes(data.audioContent) };
+    await cachePut(ck, clip);
+    return clip;
+  })();
+  inflightClips.set(ck, job);
+  try { return await job; }
+  finally { inflightClips.delete(ck); }
 }
 
 function prefetchCloud(text) {
   const eng = $('engine').value;
   if (eng === 'aistudio' && $('aikey').value.trim()) fetchAiStudioClip(text).catch(() => {});
   else if (eng === 'gcloud' && $('gkey').value.trim()) fetchGcloudClip(text).catch(() => {});
+}
+
+// 滑动窗口提前预取后续 3 个词：利用“听写开始”与书写间隙把后面的音频提前拉回本地，实现切换零延迟
+function prefetchWindow(fromIdx) {
+  for (let k = fromIdx; k < Math.min(list.length, fromIdx + 3); k++) {
+    const it = list[k];
+    if (!it) continue;
+    if ($('announce').checked && !($('engine').value === 'aistudio' && $('aiWordsOnly').checked)) prefetchCloud(`第${k + 1}个`);
+    prefetchCloud(it.hint ? `${it.word}，${it.hint}` : it.word);
+  }
 }
 
 // 批量预下载当前词表语音（温和限速，避免触发 AI Studio 免费频率限制）
@@ -640,7 +850,7 @@ async function togglePrecache() {
   const uniq = [...new Set(texts)];
   const voice = $('aivoice').value;
   const todo = [];
-  for (const t of uniq) { if (!(await cacheGet(`ai|${voice}|${t}`))) todo.push(t); }
+  for (const t of uniq) { if (!(await cacheGet(`${AI_CACHE_VER}|${voice}|${t}`))) todo.push(t); }
   if (!todo.length) { alert('当前词表的所有语音都已经缓存在本地啦！'); return; }
 
   const ctrl = new AbortController();
@@ -650,12 +860,13 @@ async function togglePrecache() {
   let retries = 0;
   try {
     for (let i = 0; i < todo.length; i++) {
+      if (ctrl.signal.aborted) break;
       btn.textContent = `⏳ 正在下载 ${i + 1}/${todo.length}（点此停止）`;
       try {
-        await fetchAiStudioClip(todo[i], ctrl.signal);
+        await fetchAiStudioClip(todo[i]);
         retries = 0;
       } catch (e) {
-        if (e.name === 'AbortError') break;
+        if (ctrl.signal.aborted) break;
         const m = e.message || '';
         const isRpm = /429|quota|rate|RESOURCE_EXHAUSTED/i.test(m) && !/limit:\s*0\b|per day|PerDay/i.test(m);
         if (isRpm && retries < 2) {
@@ -666,11 +877,11 @@ async function togglePrecache() {
         }
         throw e;
       }
-      if (i < todo.length - 1) await sleep(4500); // 每分钟约 12 次，平滑避开免费版 RPM 限制
+      if (i < todo.length - 1) await sleep(4200);
     }
-    if (!ctrl.signal.aborted) alert(`预下载完成！共缓存 ${todo.length} 条新语音，现在听写完全零延迟。`);
+    if (!ctrl.signal.aborted) alert(`预下载完成！共缓存 ${todo.length} 条标准普通话语音，现在听写完全零延迟。`);
   } catch (e) {
-    if (e.name !== 'AbortError') showTtsErr('预下载中断：' + (e.message || e));
+    if (!ctrl.signal.aborted) showTtsErr('预下载中断：' + (e.message || e));
   } finally {
     precacheCtrl = null;
     btn.textContent = '⚡ 预下载当前词表语音';
@@ -697,14 +908,18 @@ async function speak(text, isTest = false) {
   ttsAbort = ctrl;
   let clip;
   try {
-    clip = eng === 'aistudio' ? await fetchAiStudioClip(text, ctrl.signal) : await fetchGcloudClip(text, ctrl.signal);
+    const p = eng === 'aistudio' ? fetchAiStudioClip(text) : fetchGcloudClip(text);
+    clip = await Promise.race([
+      p,
+      new Promise((_, rej) => ctrl.signal.addEventListener('abort', () => rej(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true }))
+    ]);
     if (ttsAbort === ctrl) ttsAbort = null;
   } catch (e) {
     if (ttsAbort === ctrl) ttsAbort = null;
     if (e.name === 'AbortError') return;
     showTtsErr('真人语音出错：' + (e.message || e));
     if (isTest) return;
-    $('status').textContent = '⚠️ 真人语音暂时受限，本词改用浏览器声音';
+    setStatus('⚠️ 真人语音受限，本词改用本地声音', '');
     return speakBrowser(text);
   }
   return new Promise(res => {
@@ -748,21 +963,52 @@ function parseWords(text) {
 }
 function shuffleArr(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-// ---------- 我的词表（保存 / 载入 / 分享 / 备份） ----------
+// ---------- 我的词表（一点即切换 / 多选合并 / 分享 / 备份） ----------
 const getLists = () => JSON.parse(localStorage.getItem(LS.lists) || '[]');
 const setLists = l => { localStorage.setItem(LS.lists, JSON.stringify(l)); renderLists(); };
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let curName = localStorage.getItem(LS.cur) || '';
-function setCur(n) { curName = n; localStorage.setItem(LS.cur, n); $('curName').textContent = n || '未命名'; }
+function setCur(n) {
+  curName = n;
+  localStorage.setItem(LS.cur, n);
+  $('curName').textContent = n || '未命名';
+  syncHeroSummary();
+  renderLists();
+}
 function setWords(text, name) { $('words').value = text; onWordsChanged(); setCur(name); dirty = false; }
+
+function updateMergeMode() {
+  const m = $('mergeMode') && $('mergeMode').checked;
+  if ($('btnLoadChecked')) $('btnLoadChecked').classList.toggle('hidden', !m);
+  if ($('btnDelChecked')) $('btnDelChecked').classList.toggle('hidden', !m);
+  renderLists();
+}
+
+function loadSingleList(i) {
+  const l = getLists();
+  if (!l[i]) return;
+  if (dirty && $('words').value.trim() && !confirm('输入框里的词还没保存，切换后会被替换。继续吗？')) return;
+  setWords(l[i].text, l[i].name);
+}
 
 function renderLists() {
   const l = getLists();
+  const isMerge = $('mergeMode') && $('mergeMode').checked;
   $('savedLists').innerHTML = l.length
-    ? l.map((x, i) => `<label class="chip"><input type="checkbox" value="${i}">${esc(x.name)} <small>${parseWords(x.text).length}个</small></label>`).join('')
-    : '<span class="hint">还没有保存的词表。在下面输入词语后，点“保存当前词表”。</span>';
+    ? l.map((x, i) => {
+        const cls = ['chip', isMerge ? '' : 'single-mode', (!isMerge && curName === x.name) ? 'active' : ''].filter(Boolean).join(' ');
+        const clickAttr = isMerge ? '' : ` onclick="event.preventDefault();loadSingleList(${i})"`;
+        return `<label class="${cls}"${clickAttr}><input type="checkbox" value="${i}">${esc(x.name)} <small>${parseWords(x.text).length}个</small></label>`;
+      }).join('')
+    : '<span class="hint">还没有保存的词表。在下面输入词语后，点“💾 保存当前词表”（之后点一下标签就能直接切换）。</span>';
 }
 const checkedIdx = () => [...document.querySelectorAll('#savedLists input:checked')].map(c => +c.value);
+
+function deleteOneList(i) {
+  const l = getLists();
+  if (!l[i] || !confirm(`确定删除词表“${l[i].name}”吗？`)) return;
+  l.splice(i, 1);
+  setLists(l);
+}
 
 function saveList() {
   const text = splitTokens($('words').value).join('\n');
@@ -947,15 +1193,31 @@ function show(id) {
   keepAwake(id === 'dictate');
 }
 
+function setStatus(text, mode) {
+  const el = $('status');
+  el.textContent = text;
+  el.classList.remove('speaking', 'writing');
+  if (mode) el.classList.add(mode);
+}
+
+function renderProgressDots() {
+  const box = $('progressDots');
+  if (!box) return;
+  if (list.length > 40) { box.innerHTML = ''; return; }
+  box.innerHTML = list.map((_, i) => `<span class="dot ${i < idx ? 'done' : (i === idx ? 'cur' : '')}"></span>`).join('');
+}
+
 function startWith(items, useAll = false) {
-  if (!items.length) { alert('还没有词语哦'); return; }
+  if (!items.length) { alert('还没有词语哦，请先展开家长设置在输入框里添加词语'); toggleParentZone(true); return; }
   const eng = $('engine').value;
   if (eng === 'aistudio' && !$('aikey').value.trim()) {
     alert('已选择 Google AI Studio 语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
+    toggleParentZone(true);
     return;
   }
   if (eng === 'gcloud' && !$('gkey').value.trim()) {
     alert('已选择 Google Cloud 语音，请先在设置里填入 API Key（或切换回浏览器自带语音）');
+    toggleParentZone(true);
     return;
   }
   if (precacheCtrl) { precacheCtrl.abort(); precacheCtrl = null; }
@@ -966,12 +1228,14 @@ function startWith(items, useAll = false) {
   else if ($('shuffle').checked) shuffleArr(list);
   idx = 0; paused = false; $('btnPause').textContent = '⏸ 暂停';
   $('total').textContent = list.length;
+  renderProgressDots();
   show('dictate');
   const my = ++token;
   stopAudio();
-  $('status').textContent = '准备好纸和笔哦';
-  if (list[0]) prefetchCloud(list[0].hint ? `${list[0].word}，${list[0].hint}` : list[0].word);
-  speakPrompt('听写开始').then(() => sleep(800)).then(() => { if (my === token) readCurrent(); });
+  setStatus('准备好纸和笔哦', '');
+  // 开场立刻并行预加载前 3 个词，利用“听写开始”播报间隙消除首个词延迟
+  prefetchWindow(0);
+  speakPrompt('听写开始').then(() => sleep(600)).then(() => { if (my === token) readCurrent(); });
 }
 function startNormal() { startWith(parseWords($('words').value)); }
 function startBook() { startWith(getBook()); }
@@ -986,70 +1250,91 @@ async function readCurrent() {
   paused = false; $('btnPause').textContent = '⏸ 暂停';
   const item = list[idx];
   $('num').textContent = idx + 1;
-  $('status').textContent = '🔊 请听…';
+  renderProgressDots();
   const text = item.hint ? `${item.word}，${item.hint}` : item.word;
-  prefetchCloud(text);
-  if ($('announce').checked) { await speakPrompt(`第${idx + 1}个`); if (my !== token) return; await sleep(400); }
+  prefetchWindow(idx);
+  setStatus('🔊 正在播报题号…', 'speaking');
+  if ($('announce').checked) { await speakPrompt(`第${idx + 1}个`); if (my !== token) return; await sleep(350); }
   const n = Math.max(1, parseInt($('repeat').value) || 1);
   for (let i = 0; i < n; i++) {
+    setStatus(n > 1 ? `🔊 请听（第 ${i + 1} / ${n} 遍）…` : '🔊 请仔细听…', 'speaking');
     await speak(text); if (my !== token) return;
-    if (i < n - 1) { await sleep(1500); if (my !== token) return; }
+    if (i === 0) prefetchWindow(idx + 1); // 读完第 1 遍立刻开始预取后续词语
+    if (i < n - 1) { setStatus('⏳ 准备读下一遍…', ''); await sleep(1400); if (my !== token) return; }
   }
-  const nxt = list[idx + 1];
-  if (nxt) {
-    if ($('announce').checked && !($('engine').value === 'aistudio' && $('aiWordsOnly').checked)) prefetchCloud(`第${idx + 2}个`);
-    prefetchCloud(nxt.hint ? `${nxt.word}，${nxt.hint}` : nxt.word);
-  }
+  prefetchWindow(idx + 1);
   if ($('auto').checked) {
     const total = ((parseInt($('base').value) || 0) + (parseInt($('perChar').value) || 4) * item.word.length) * 1000;
     const t0 = Date.now();
-    $('status').textContent = '✏️ 请写下来';
     timer = setInterval(() => {
       if (my !== token) return clearInterval(timer);
-      const p = (Date.now() - t0) / total;
+      const elapsed = Date.now() - t0;
+      const p = elapsed / total;
+      const leftSec = Math.max(1, Math.ceil((total - elapsed) / 1000));
+      setStatus(`✏️ 请写下来 · 还剩 ${leftSec} 秒`, 'writing');
       $('barInner').style.width = Math.min(100, p * 100) + '%';
       if (p >= 1) { clearInterval(timer); next(); }
     }, 100);
   } else {
-    $('status').textContent = '✏️ 写好了就点“下一个”';
+    setStatus('✏️ 写好了就点“下一个 ▶”', 'writing');
   }
 }
 function next() { if (idx < list.length - 1) { idx++; readCurrent(); } else finish(); }
 function prev() { if (idx > 0) { idx--; readCurrent(); } }
 function togglePause() {
-  if (!paused) { stopAll(); paused = true; $('btnPause').textContent = '▶ 继续'; $('status').textContent = '⏸ 已暂停'; }
+  if (!paused) { stopAll(); paused = true; $('btnPause').textContent = '▶ 继续'; setStatus('⏸ 已暂停', ''); }
   else readCurrent();
 }
 
-// ---------- 核对 ----------
+// ---------- 核对（教科书楷体 + 田字格 + 离开自动保存错词） ----------
+let wrongSavedThisRound = false;
 function finish() {
   stopAll();
+  wrongSavedThisRound = false;
   speakPrompt('听写结束，请检查');
   show('check');
   $('answers').innerHTML = list.map((it, i) =>
-    `<div class="ans" data-i="${i}"><small>${i + 1}</small>${it.word}</div>`).join('');
-  document.querySelectorAll('.ans').forEach(el => el.onclick = () => { el.classList.toggle('wrong'); updateScore(); });
+    `<div class="ans" data-i="${i}"><small>${i + 1}</small><span class="mark">✓</span>${esc(it.word)}</div>`).join('');
+  document.querySelectorAll('.ans').forEach(el => el.onclick = () => {
+    const isW = el.classList.toggle('wrong');
+    el.querySelector('.mark').textContent = isW ? '✗' : '✓';
+    wrongSavedThisRound = false;
+    updateScore();
+  });
   updateScore();
 }
 function wrongItems() { return [...document.querySelectorAll('.ans.wrong')].map(el => list[el.dataset.i]); }
 function updateScore() {
   const w = wrongItems().length, t = list.length;
-  $('score').textContent = `共 ${t} 个，对了 ${t - w} 个` + (w === 0 ? ' 🎉 全对！' : '');
+  $('score').textContent = `共 ${t} 个，对了 ${t - w} 个` + (w === 0 ? ' 🎉 太棒啦，全对！' : `，错了 ${w} 个`);
+}
+function mergeWrongIntoBook(w) {
+  const book = getBook();
+  let added = 0;
+  w.forEach(it => { if (!book.some(b => b.word === it.word)) { book.push(it); added++; } });
+  if (added > 0) setBook(book);
+  wrongSavedThisRound = true;
+  return book.length;
 }
 function saveWrong() {
   const w = wrongItems();
   if (!w.length) { alert('没有标记错词'); return; }
-  const book = getBook();
-  w.forEach(it => { if (!book.some(b => b.word === it.word)) book.push(it); });
-  setBook(book);
-  alert(`已加入错词本，现在一共 ${book.length} 个`);
+  const total = mergeWrongIntoBook(w);
+  alert(`已加入错词本，现在一共 ${total} 个`);
+}
+function autoSaveWrongIfNeeded() {
+  if (!$('check').classList.contains('hidden') && !wrongSavedThisRound) {
+    const w = wrongItems();
+    if (w.length) mergeWrongIntoBook(w);
+  }
 }
 function redoWrong() {
   const w = wrongItems();
   if (!w.length) { alert('没有标记错词'); return; }
+  mergeWrongIntoBook(w);
   startWith(w, true);
 }
-function goHome() { stopAll(); show('setup'); }
+function goHome() { autoSaveWrongIfNeeded(); stopAll(); show('setup'); }
 
 // ---------- 拍照识别（优先使用 AI Studio Gemini 3.8 视觉高精识别，无 Key 时退回本地 Tesseract.js） ----------
 const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
@@ -1139,18 +1424,21 @@ function rankVisionModel(m) {
   return 5;
 }
 
-async function resolveVisionModels(key) {
-  if (!discoveredVisionModels) {
-    try {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
-      const d = await r.json();
-      discoveredVisionModels = (d.models || [])
-        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-        .map(m => (m.name || '').replace(/^models\//, ''))
-        .filter(n => /^gemini/i.test(n) && /flash/i.test(n) && !/tts|pro|image|imagen|veo|embedding|aqa|audio|live|robotics|computer|2\.0|1\.5/i.test(n));
-    } catch { discoveredVisionModels = []; }
-  }
-  const disc = discoveredVisionModels.filter(m => !deadVisionModels.has(m)).sort((a, b) => rankVisionModel(a) - rankVisionModel(b));
+async function discoverVisionModelsOnce(key) {
+  if (discoveredVisionModels) return discoveredVisionModels;
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
+    const d = await r.json();
+    discoveredVisionModels = (d.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map(m => (m.name || '').replace(/^models\//, ''))
+      .filter(n => /^gemini/i.test(n) && /flash/i.test(n) && !/tts|pro|image|imagen|veo|embedding|aqa|audio|live|robotics|computer|2\.0|1\.5/i.test(n));
+  } catch { discoveredVisionModels = []; }
+  return discoveredVisionModels;
+}
+
+function getCandidateVisionModels() {
+  const disc = (discoveredVisionModels || []).filter(m => !deadVisionModels.has(m)).sort((a, b) => rankVisionModel(a) - rankVisionModel(b));
   const fall = VISION_FALLBACK_MODELS.filter(m => !deadVisionModels.has(m) && !disc.includes(m));
   const all = [...disc, ...fall];
   if (resolvedVisionModel && !deadVisionModels.has(resolvedVisionModel)) {
@@ -1191,19 +1479,21 @@ async function recognizeWithGemini(files, onStep) {
     onStep(`正在读取第 ${i + 1} / ${files.length} 张照片…`, (i / files.length) * 0.4);
     imgParts.push(await fileToGeminiPart(files[i]));
   }
-  const models = await resolveVisionModels(key);
+  let models = getCandidateVisionModels();
+  let triedDiscover = Boolean(discoveredVisionModels);
   let lastErr = null;
   for (let mi = 0; mi < models.length; mi++) {
     const model = models[mi];
     onStep(`✨ AI 正在识别词语（${model}）…`, 0.6);
+    // 3.8-flash 开启 LOW 思考级别，省掉冗长推理，识图响应提速 2~3 倍
+    const payload = { contents: [{ parts: [...imgParts, { text: OCR_PROMPT }] }] };
+    if (/^gemini-3\.8-flash$/i.test(model)) payload.generationConfig = { thinkingConfig: { thinkingLevel: 'LOW' } };
     let res, data;
     try {
       res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [...imgParts, { text: OCR_PROMPT }] }]
-        })
+        body: JSON.stringify(payload)
       });
       data = await res.json().catch(() => ({}));
     } catch (netErr) {
@@ -1216,6 +1506,13 @@ async function recognizeWithGemini(files, onStep) {
       if (res.status === 404 || res.status === 400 || /deprecated|not found|limit:\s*0\b/i.test(msg)) {
         deadVisionModels.add(model);
         if (resolvedVisionModel === model) resolvedVisionModel = '';
+      }
+      if (!triedDiscover) {
+        triedDiscover = true;
+        await discoverVisionModelsOnce(key);
+        models = getCandidateVisionModels();
+        mi = -1;
+        continue;
       }
       continue;
     }
@@ -1348,6 +1645,8 @@ onWordsChanged();
 updateOcrHint();
 renderLists();
 setCur(curName);
+// 如果本地已经有词表，默认自动收起家长设置区，让孩子打开就能直接点“开始听写”且不会提前看到词语答案
+toggleParentZone(parseWords($('words').value).length === 0);
 // 打开的是分享链接或扫码同步链接？（立即擦除地址栏里的 hash，防止 Key 留在浏览记录里）
 if (/[#&](w|ak|gk)=/.test(location.hash)) {
   const h = location.hash;
