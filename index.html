@@ -282,13 +282,13 @@
             </label>
             <label>模型
               <select id="aimodel">
-                <option value="auto">自动选择（优先 3.8 Flash Lite）</option>
-                <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts（极速·省额度）</option>
+                <option value="auto">自动选择 3.8（优先 Lite 极速）</option>
+                <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts（极速·推荐）</option>
                 <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts（高音质）</option>
-                <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-preview-tts</option>
               </select>
             </label>
             <button class="soft" style="font-size:15px;padding:6px 14px" onclick="testVoice()">🔊 试听</button>
+            <span class="hint" id="ttsModelTag" style="color:var(--green);font-weight:600"></span>
           </div>
           <div class="row">
             <label style="flex:1;min-width:240px">AI Studio Key
@@ -648,18 +648,17 @@ function bytesToDataUrl(bytes, mime) {
   return `data:${mime};base64,` + btoa(bin);
 }
 
-// Google AI Studio (Gemini TTS)
-// 1. 强制 speechConfig.languageCode = 'cmn-CN'，彻底解决汉字被误读成日文音读/粤语的问题
-// 2. 整表合并单次合成 (Batch Synthesis + PCM 静音切分)：AI Studio 免费版单模型每天仅限 10 次请求 (limit: 10)，
-//    把 20 个词合并成 1 次请求并用静音检测切分成独立音频缓存，1 次额度 = 20 个词（省 95% 额度 + 听写全程零延迟！）
-// 3. 支持某模型当日额度用完 (per day) 自动切换备用模型，也支持填入多个免费 Key（逗号分隔）自动轮换
-const AI_CACHE_VER = 'ai2';
+// Google AI Studio (Gemini 3.8 TTS 专用)
+// 1. 严格锁定使用 3.8 系列（gemini-3.8-flash-lite-tts / gemini-3.8-flash-tts），彻底弃用旧版 3.1 和 2.5
+// 2. 双重普通话防日文锁：speechConfig.languageCode（自动兼容 cmn-CN / zh-CN / 省略）+ 简体中文专属锚词“汉语。 <long pause> ”（切分后自动丢弃），杜绝中日同形词被读成日文
+// 3. 整表合并单次合成 (Batch Synthesis + PCM 静音切分)：把最多 18 个词合并成 1 次请求，省 95% 额度 + 听写全程零延迟
+const AI_CACHE_VER = 'ai3';
 const AI_FALLBACK_MODELS = [
   'gemini-3.8-flash-lite-tts',
-  'gemini-3.8-flash-tts',
-  'gemini-3.1-flash-tts-preview',
-  'gemini-2.5-flash-preview-tts'
+  'gemini-3.8-flash-tts'
 ];
+const AI_LANG_MODES = ['cmn-CN', 'zh-CN', ''];
+let aiLangIdx = 0;
 let resolvedAiModel = '', discoveredAiModels = null;
 const deadAiModels = new Set(); // 记录不可用或当日额度已耗尽的 `${keyIdx}|${model}`
 const inflightClips = new Map();
@@ -669,14 +668,11 @@ function getAiKeys() {
 }
 
 function rankTtsModel(m) {
-  if (/pro/i.test(m)) return 9;
+  if (/pro|2\.5|3\.1/i.test(m)) return 9;
   if (/3\.8.*flash.*lite/i.test(m)) return 0;
   if (/3\.8.*flash/i.test(m)) return 1;
-  if (/3\..*flash.*lite/i.test(m)) return 2;
-  if (/3\..*flash/i.test(m)) return 3;
-  if (/flash.*lite/i.test(m)) return 4;
-  if (/2\.5.*flash/i.test(m)) return 6;
-  if (/flash/i.test(m)) return 5;
+  if (/flash.*lite/i.test(m)) return 2;
+  if (/flash/i.test(m)) return 3;
   return 7;
 }
 
@@ -685,9 +681,10 @@ async function discoverAiModelsOnce(key) {
   try {
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
     const d = await r.json();
+    // 仅自动发现 3.8 及更新版本的 Flash TTS 模型，彻底排除旧版 3.1 / 2.5 / pro
     discoveredAiModels = (d.models || [])
       .map(m => (m.name || '').replace(/^models\//, ''))
-      .filter(n => /tts/i.test(n) && !/pro/i.test(n));
+      .filter(n => /tts/i.test(n) && !/pro|2\.5|3\.1/i.test(n));
     const selEl = $('aimodel');
     const existing = new Set([...selEl.options].map(o => o.value));
     discoveredAiModels.forEach(n => {
@@ -788,11 +785,12 @@ function splitPcmBySilence(pcmBytes, sampleRate, k) {
   return slices;
 }
 
-// 底层调用一次 Gemini TTS，返回 { raw, mime, sampleRate, model }（自动跨模型、跨多 Key 容错切换）
+// 底层调用一次 Gemini 3.8 TTS，返回 { raw, mime, sampleRate, model }
+// 若遇到 languageCode 400 参数校验失败，自动原地降级 speechConfig 兼容当前 3.8 接口，绝不误拉黑 3.8 跳去旧模型
 async function callGeminiTtsOnce(buildPromptFn, voice) {
   const keys = getAiKeys();
   if (!keys.length) throw new Error('请先填入 Google AI Studio 的 API Key');
-  let lastErr = null;
+  const errs = [];
   for (let ki = 0; ki < keys.length; ki++) {
     const key = keys[ki];
     let models = getCandidateAiModels(ki);
@@ -800,26 +798,32 @@ async function callGeminiTtsOnce(buildPromptFn, voice) {
     for (let i = 0; i < models.length; i++) {
       const model = models[i];
       const promptText = buildPromptFn(model);
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              languageCode: 'cmn-CN',
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
-            }
-          }
-        })
-      });
-      const data = await res.json().catch(() => ({}));
+      let res, data;
+      // 自动兼容 3.8 的 languageCode（先试 cmn-CN -> 再试 zh-CN -> 必要时省略并靠简体锚词“汉语”锁普通话）
+      while (true) {
+        const lang = AI_LANG_MODES[aiLangIdx];
+        const speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
+        if (lang) speechConfig.languageCode = lang;
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig }
+          })
+        });
+        data = await res.json().catch(() => ({}));
+        const msg400 = data.error?.message || '';
+        if (res.status === 400 && aiLangIdx < AI_LANG_MODES.length - 1 && /language|speech_config|speechConfig|Unknown name|INVALID_ARGUMENT/i.test(msg400)) {
+          aiLangIdx++;
+          continue;
+        }
+        break;
+      }
       if (!res.ok) {
         const msg = data.error?.message || `请求失败 (${res.status})`;
-        lastErr = new Error(`[${model}] ${msg}`);
-        // 404/400/limit:0/当日配额耗尽(per day)/误生成文本：拉黑当前 key 下的该模型，立刻换下一个可用模型或下一个 Key
-        if (res.status === 404 || res.status === 400 || /limit:\s*0\b|per day|PerDay|tried to generate text/i.test(msg)) {
+        errs.push(`[${model}] ${msg}`);
+        if (res.status === 404 || /limit:\s*0\b|per day|PerDay/i.test(msg)) {
           deadAiModels.add(`${ki}|${model}`);
           if (resolvedAiModel === model) resolvedAiModel = '';
         }
@@ -835,19 +839,19 @@ async function callGeminiTtsOnce(buildPromptFn, voice) {
       const part = (data.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
       if (!part) {
         const fmsg = data.candidates?.[0]?.finishMessage || data.candidates?.[0]?.finishReason || '没有返回音频数据';
-        lastErr = new Error(`[${model}] ${fmsg}`);
-        if (/tried to generate text/i.test(fmsg)) deadAiModels.add(`${ki}|${model}`);
+        errs.push(`[${model}] ${fmsg}`);
         if (resolvedAiModel === model) resolvedAiModel = '';
         continue;
       }
       resolvedAiModel = model;
+      if ($('ttsModelTag')) $('ttsModelTag').textContent = `✓ 当前模型：${model}`;
       const mime = part.inlineData.mimeType || 'audio/L16;rate=24000';
       const raw = b64ToBytes(part.inlineData.data);
       const sampleRate = +(mime.match(/rate=(\d+)/i)?.[1] || 24000);
       return { raw, mime, sampleRate, model };
     }
   }
-  throw lastErr || new Error('今日免费语音次数已用完（可在 AI Studio 新建一个免费项目的 Key 逗号隔开填入，或明天自动恢复）');
+  throw new Error(errs.length ? errs.join(' | ') : '没有可用的 Gemini 3.8 TTS 模型');
 }
 
 async function fetchAiStudioClip(text) {
@@ -860,13 +864,23 @@ async function fetchAiStudioClip(text) {
   if (inflightClips.has(ck)) return inflightClips.get(ck);
 
   const job = (async () => {
+    // 单个短词（<=6字）最容易和中日同形汉字混淆，前面加简体中文专属锚词“汉语。 <long pause> ”锁死普通话，拿到 PCM 后自动切掉“汉语”
+    const useAnchor = text.length <= 6 && !/汉语/.test(text);
     const { raw, mime, sampleRate } = await callGeminiTtsOnce(
-      model => /2\.5/i.test(model) ? `Say clearly: ${text}` : text,
+      () => useAnchor ? `汉语。 <long pause> ${text}。` : text,
       voice
     );
-    const clip = (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49))
-      ? { mime: 'audio/wav', bytes: pcmToWavBytes(raw, sampleRate) }
-      : { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
+    let pcmToUse = raw;
+    if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
+      if (useAnchor) {
+        const parts = splitPcmBySilence(raw, sampleRate, 2);
+        if (parts && parts.length === 2) pcmToUse = parts[1];
+      }
+      const clip = { mime: 'audio/wav', bytes: pcmToWavBytes(pcmToUse, sampleRate) };
+      await cachePut(ck, clip);
+      return clip;
+    }
+    const clip = { mime: mime.split(';')[0] || 'audio/wav', bytes: raw };
     await cachePut(ck, clip);
     return clip;
   })();
@@ -876,7 +890,7 @@ async function fetchAiStudioClip(text) {
   finally { inflightClips.delete(ck); }
 }
 
-// 一次 API 请求打包合成最多 20 个词语并自动按静音切分缓存（省 95% 免费请求次数！）
+// 一次 3.8 API 请求打包合成最多 18 个词语并自动按静音切分缓存（开头带简体锚词“汉语”锁死普通话后丢弃）
 async function synthesizeAiBatch(texts) {
   const voice = $('aivoice').value;
   const uncached = [];
@@ -891,23 +905,22 @@ async function synthesizeAiBatch(texts) {
   for (let offset = 0; offset < uncached.length; offset += CHUNK) {
     const group = uncached.slice(offset, offset + CHUNK);
     if (group.length === 1) { await fetchAiStudioClip(group[0]); savedCount++; continue; }
-    const { raw, mime, sampleRate } = await callGeminiTtsOnce(model => {
-      if (/3\.8/i.test(model)) return group.map(t => t + '。').join(' <long pause> ');
-      if (/3\.1/i.test(model)) return group.map(t => t + '。').join(' [long pause] ');
-      return 'Say clearly with a long pause between each item: ' + group.map(t => t + '。').join(' ... ... ');
-    }, voice);
+    const anchored = ['汉语', ...group];
+    const { raw, mime, sampleRate } = await callGeminiTtsOnce(
+      () => anchored.map(t => t + '。').join(' <long pause> '),
+      voice
+    );
 
     if (/L16|pcm/i.test(mime) && !(raw[0] === 0x52 && raw[1] === 0x49)) {
-      const slices = splitPcmBySilence(raw, sampleRate, group.length);
-      if (slices && slices.length === group.length) {
+      const slices = splitPcmBySilence(raw, sampleRate, anchored.length);
+      if (slices && slices.length === anchored.length) {
         for (let i = 0; i < group.length; i++) {
-          await cachePut(`${AI_CACHE_VER}|${voice}|${group[i]}`, { mime: 'audio/wav', bytes: pcmToWavBytes(slices[i], sampleRate) });
+          await cachePut(`${AI_CACHE_VER}|${voice}|${group[i]}`, { mime: 'audio/wav', bytes: pcmToWavBytes(slices[i + 1], sampleRate) });
           savedCount++;
         }
         continue;
       }
     }
-    // 极端情况下若未切分出对应段数，仅兜底拉取第 1 个词（不狂发 N 次请求耗光额度）
     await fetchAiStudioClip(group[0]);
     savedCount++;
   }
